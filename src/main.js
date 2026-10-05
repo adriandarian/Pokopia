@@ -3,6 +3,9 @@ import { buildTerrain, scatterNature } from './terrain.js';
 import { buildSky } from './sky.js';
 import { Player } from './player.js';
 import { Creatures, Collectibles } from './creatures.js';
+import { initGame } from './game/index.js';
+import { emit } from './game/events.js';
+import { setupPost } from './fx/post.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -30,12 +33,14 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+const post = setupPost(renderer, scene, camera);
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   player.update(dt); creatures.update(dt, t); collect.update(t, player.mesh.position); sky.update(t);
-  renderer.render(scene, camera);
+  post.render(dt);
 });
 
 // Handles for automated visual QA (screenshots from fixed viewpoints).
 window.__game = { scene, camera, renderer, player, setCam(x, y, z, lx, ly, lz) { player.frozen = true; camera.position.set(x, y, z); camera.lookAt(lx, ly, lz); } };
+initGame({ player, creatures, collect, camera });
