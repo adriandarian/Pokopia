@@ -43,11 +43,12 @@ export class Player {
       const top = running ? 11 : 6.5;
       const dir = new THREE.Vector3(r, 0, -f);
       moving = dir.lengthSq() > 0;
+      this._yr = (this._yr || 0) * 0.85;
       if (moving) {
         dir.normalize().applyAxisAngle(UP, this.yaw); this.moveDir.copy(dir);
         const target = Math.atan2(dir.x, dir.z);
         let d = target - this.mesh.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d));
-        this.mesh.rotation.y += d * (1 - Math.exp(-16 * dt));
+        const dy = d * (1 - Math.exp(-16 * dt)); this.mesh.rotation.y += dy; this._yr = dy / Math.max(dt, 1e-3);
       }
       // eased acceleration / braking (floatier in the air)
       const accel = moving ? (this.onGround ? 9 : 4) : (this.onGround ? 12 : 1.5);
@@ -57,7 +58,9 @@ export class Player {
 
       // jump with coyote time + input buffer
       this.coyote = this.onGround ? 0.1 : this.coyote - dt; this.jumpBuf -= dt;
-      if (this.jumpBuf > 0 && this.coyote > 0) { this.vel.y = 8.6; this.onGround = false; this.coyote = 0; this.jumpBuf = 0; this.fx.dust(p, 5, 1.1); }
+      // anticipation: a short crouch (~0.09s) before the launch
+      if (this.jumpBuf > 0 && this.coyote > 0 && !(this.wind > 0)) { this.wind = 0.09; this.jumpBuf = 0; }
+      if (this.wind > 0) { this.wind -= dt; if (this.wind <= 0) { this.vel.y = 8.6; this.onGround = false; this.coyote = 0; this.fx.dust(p, 5, 1.1); } }
       this.vyPrev = this.vel.y;
       this.vel.y -= (this.vel.y < 0 ? 30 : 24) * dt; p.y += this.vel.y * dt;
       const ground = groundAt(p.x, p.z);
@@ -72,7 +75,7 @@ export class Player {
 
     const ground = groundAt(p.x, p.z);
     this.hero.update(dt, {
-      speed: this.speed, grounded: this.onGround, vy: this.vel.y, landVy: this.landVy ?? -8, heightAboveGround: Math.max(0, p.y - ground),
+      speed: this.speed, crouch: this.wind > 0, yawRate: this._yr || 0, grounded: this.onGround, vy: this.vel.y, landVy: this.landVy ?? -8, heightAboveGround: Math.max(0, p.y - ground),
       onFoot: (side, run) => {
         const q = p.clone(); q.y += 0.1; q.x += (Math.random() - .5) * 0.3;
         this.fx.dust(q, run > 0.3 ? 3 : 2, run > 0.3 ? 0.9 : 0.6);

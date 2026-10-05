@@ -4,7 +4,7 @@ import { heightAt } from '../terrain.js';
 function glowTexture() {
   const cv = document.createElement('canvas'); cv.width = cv.height = 64;
   const g = cv.getContext('2d'), grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.3, 'rgba(255,255,255,.5)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.15, 'rgba(255,255,255,.55)'); grd.addColorStop(0.4, 'rgba(255,255,255,.15)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(cv);
 }
@@ -37,13 +37,14 @@ export function buildAmbientLife(scene, state) {
         p.x=mod(p.x+60.,120.)-60.;
         vec4 mv=modelViewMatrix*vec4(p,1.);
         gl_Position=projectionMatrix*mv;
-        float size=mix(2.2,4.,night)*(.6+seed*.8);
-        gl_PointSize=clamp(size*scale/(-mv.z),1.,26.);
-        tw=mix(1.,.3+.7*sin(time*2.+seed*50.),night);
+        float size=mix(2.2,1.4,night)*(.6+seed*.8);
+        gl_PointSize=clamp(size*scale/(-mv.z),1.,mix(16.,9.,night));
+        float pulse=.5+.5*sin(time*(1.5+seed*2.)+seed*50.);
+        tw=mix(1.,pow(pulse,2.5)*.9+.1,night);
         a=smoothstep(140.,30.,-mv.z);
       }`,
     fragmentShader: `uniform sampler2D map;uniform vec3 col;uniform float night;varying float a;varying float tw;
-      void main(){float m=texture2D(map,gl_PointCoord).a;gl_FragColor=vec4(mix(col,vec3(.7,1.,.4),night),m*a*tw*mix(.3,1.,night));}`,
+      void main(){float m=texture2D(map,gl_PointCoord).a;vec3 c=mix(col,vec3(.55,1.,.3),night);gl_FragColor=vec4(c*(1.+night*1.5),m*m*a*tw*mix(.3,1.,night));}`,
   }));
   motes.frustumCulled = false; scene.add(motes);
 

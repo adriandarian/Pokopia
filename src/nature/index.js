@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { WORLD, heightAt, POND_LEVEL } from '../terrain.js';
 import { fbm, mulberry } from '../noise.js';
-import { POND, pathMask } from './features.js';
+import { POND, pathMask, meadowMask, groveMask, LANDMARKS, SUMMIT } from './features.js';
 import { applyWind, tickWind } from './wind.js';
 import * as S from './species.js';
 import { buildGrass } from './grass.js';
@@ -31,45 +31,84 @@ export function scatterNature(scene) {
   const stdMat = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
 
   // species meshes
-  const oak = inst(S.roundTree(['#5fbf45', '#78d255', '#4aa83c'], 1), mkMat({ amp: 0.03, heightGain: 0.012 }), 200);
-  const oak2 = inst(S.roundTree(['#7ec94a', '#9ad85a', '#68b843'], 2), mkMat({ amp: 0.03, heightGain: 0.012 }), 200);
-  const blossom = inst(S.roundTree(['#ffb3cf', '#ffc8dc', '#f79bbd'], 3), mkMat({ amp: 0.03, heightGain: 0.012 }), 40);
-  const pine = inst(S.pineTree(1), mkMat({ amp: 0.015, heightGain: 0.012 }), 140);
+  const oak = inst(S.roundTree(['#5fbf45', '#78d255', '#4aa83c'], 1), mkMat({ amp: 0.03, heightGain: 0.012 }), 140);
+  const oak2 = inst(S.roundTree(['#7ec94a', '#9ad85a', '#68b843'], 2), mkMat({ amp: 0.03, heightGain: 0.012 }), 140);
+  const blossom = inst(S.roundTree(['#ffb3cf', '#ffc8dc', '#f79bbd'], 3), mkMat({ amp: 0.03, heightGain: 0.012 }), 30);
+  const pine = inst(S.pineTree(1), mkMat({ amp: 0.015, heightGain: 0.012 }), 120);
   const palm = inst(S.palmTree(1), mkMat({ amp: 0.05, heightGain: 0.025, speed: 1.2 }, THREE.DoubleSide), 60);
   const bushM = inst(S.bush(['#4fb447', '#68cb52'], 1), mkMat({ amp: 0.03, heightGain: 0.02 }), 200);
   const berry = inst(S.berryBush(3), mkMat({ amp: 0.03, heightGain: 0.02 }), 60);
   const rocks = inst(S.rock(1), stdMat(), 260);
   const rocks2 = inst(S.rock(5), stdMat(), 260);
   const shrooms = inst(S.mushroom(), stdMat(), 200);
+  const stones = inst(S.standingStone(), stdMat(), 12);
+  const ferns = inst(S.fern('#3d9a4a'), mkMat({ amp: 0.05, heightGain: 0.06 }, THREE.DoubleSide), 520);
   const reeds = inst(S.reed(), mkMat({ amp: 0.06, heightGain: 0.05 }), 80);
 
-  // trees
+  // trees: groves, meadows with lone trees, landmarks
   let tries = 0;
   const count = { oak: 0, pine: 0, palm: 0, bloss: 0 };
-  while (tries++ < 14000) {
+  const addTree = (kind, x, z, h, sc, rot) => {
+    const tint = jitter(0.18), sy = 0.85 + rnd() * 0.45, tilt = 0.02 + rnd() * 0.035;
+    const y = h - 0.2;
+    if (kind === 'pine') pine.add1(x, y, z, sc * 1.05, rot, tint, sy, tilt * 0.6);
+    else if (kind === 'bloss') bloss_add(x, y, z, sc, rot, tint, sy, tilt);
+    else if (kind === 'oak') oak.add1(x, y, z, sc, rot, tint, sy, tilt);
+    else oak2.add1(x, y, z, sc, rot, tint, sy, tilt);
+    taken.push([x, z, 1.5 * sc]); treePts.push([x, z, sc * 0.6]);
+  };
+  const bloss_add = (...a) => blossom.add1(...a);
+  for (const L of LANDMARKS) {
+    const h = heightAt(L.x, L.z);
+    addTree(L.kind === 'blossom' ? 'bloss' : L.kind, L.x, L.z, h, L.s, rnd() * 6.28);
+    for (let k = 0; k < 5; k++) { const a = rnd() * 6.28, d = 2 + rnd() * 2.2; const bx = L.x + Math.cos(a) * d * L.s * 0.7, bz = L.z + Math.sin(a) * d * L.s * 0.7; if (free(bx, bz, 0.6) && pathMask(bx, bz) < 0.1) { shrooms.add1(bx, heightAt(bx, bz) - 0.02, bz, 0.9 + rnd() * 0.9, rnd() * 6.28, null, 1, 0.1); } }
+  }
+  // standing-stone circle on the summit
+  for (let i = 0; i < 7; i++) {
+    const a = i / 7 * Math.PI * 2 + 0.3, x = SUMMIT.x + Math.cos(a) * 5.6, z = SUMMIT.z + Math.sin(a) * 5.6;
+    if (pathMask(x, z) > 0.25) continue;
+    stones.add1(x, heightAt(x, z) - 0.15, z, 0.8 + rnd() * 0.5, a * 3, jitter(0.2), 0.8 + rnd() * 0.5, 0.05);
+    taken.push([x, z, 1]);
+  }
+  while (tries++ < 22000) {
     const x = (rnd() - 0.5) * WORLD * 0.92, z = (rnd() - 0.5) * WORLD * 0.92, h = heightAt(x, z);
-    if (h < 0.4 || pondD(x, z) < 1.8 || pathMask(x, z) > 0.12) continue;
-    if (slopeAt(x, z) > 0.75) continue;
+    if (h < 0.4 || pondD(x, z) < 1.9 || pathMask(x, z) > 0.14) continue;
+    if (slopeAt(x, z) > 0.8) continue;
     const rot = rnd() * 6.28;
-    if (h < 2.0) { // beach palms
-      if (count.palm >= 40 || rnd() > 0.06 || !free(x, z, 3)) continue;
-      palm.add1(x, h - 0.15, z, 0.85 + rnd() * 0.5, rot, jitter(0.12), 1, 0.04); taken.push([x, z, 1.5]); treePts.push([x, z, 0.4]); count.palm++; continue;
+    if (h < 2.0) { // beach palms, clumped
+      if (count.palm >= 34 || rnd() > 0.05 * (0.3 + fbm(x * 0.08, z * 0.08, 2, 51) * 2) || !free(x, z, 3.2)) continue;
+      palm.add1(x, h - 0.15, z, 0.8 + rnd() * 0.6, rot, jitter(0.12), 0.9 + rnd() * 0.3, 0.05 + rnd() * 0.05); taken.push([x, z, 1.5]); treePts.push([x, z, 0.4]); count.palm++; continue;
     }
-    const dens = fbm(x * 0.05, z * 0.05, 3, 11);
-    if (dens < 0.4 || h > 10.5) continue;
-    const sc = 0.8 + rnd() * 0.7;
-    if (!free(x, z, 2.3 * sc)) continue;
-    const high = h > 6.5;
-    const pick = rnd();
-    if ((high && pick < 0.65) || pick < 0.18) { if (count.pine >= 140) continue; pine.add1(x, h - 0.15, z, sc * 1.05, rot, jitter(0.15), 0.9 + rnd() * 0.5); count.pine++; }
-    else if (!high && pick > 0.95 && count.bloss < 40) { blossom.add1(x, h - 0.15, z, sc, rot, jitter(0.08), 1, 0.02); count.bloss++; }
-    else if (rnd() < 0.5) { if (count.oak >= 200) continue; oak.add1(x, h - 0.15, z, sc, rot, jitter(0.15), 0.9 + rnd() * 0.35, 0.02); count.oak++; }
-    else { if (oak2.count >= 200) continue; oak2.add1(x, h - 0.15, z, sc, rot, jitter(0.15), 0.9 + rnd() * 0.35, 0.02); }
-    taken.push([x, z, 1.7 * sc]); treePts.push([x, z, sc * 0.6]);
+    if (h > 10.8) continue;
+    const g = groveMask(x, z), m = meadowMask(x, z);
+    const dens = g * (0.55 + fbm(x * 0.09, z * 0.09, 2, 11) * 0.7) + (1 - g) * (1 - m) * 0.12 + m * 0.01;
+    if (rnd() > dens) continue;
+    const sc = (0.65 + Math.pow(rnd(), 1.5) * 0.95) * (g > 0.5 ? 1.0 : 0.85);
+    if (!free(x, z, (g > 0.5 ? 1.7 : 3.4) * sc)) continue;
+    const high = h > 6.5, pick = rnd();
+    let kind;
+    if ((high && pick < 0.7) || pick < 0.14 + g * 0.22) kind = 'pine';
+    else if (!high && pick > 0.94) kind = 'bloss';
+    else kind = rnd() < 0.5 ? 'oak' : 'oak2';
+    if (kind === 'pine' && count.pine >= 110) continue;
+    if (kind === 'bloss' && count.bloss >= 22) continue;
+    if (kind === 'oak' && count.oak >= 130) continue;
+    if (kind === 'oak2' && oak2.count >= 130) continue;
+    count[kind === 'oak2' ? 'oak' : kind]++;
+    addTree(kind, x, z, h, sc, rot);
     if (rnd() < 0.3) for (let k = 0; k < 1 + (rnd() * 3 | 0); k++) {
       const a = rnd() * 6.28, d = 1 + rnd() * 0.9, mx = x + Math.cos(a) * d * sc, mz = z + Math.sin(a) * d * sc;
       if (shrooms.count < 160) shrooms.add1(mx, heightAt(mx, mz) - 0.02, mz, 0.9 + rnd() * 0.9, rnd() * 6.28, null, 1, 0.1);
     }
+  }
+  // ferns under groves
+  tries = 0;
+  while (tries++ < 20000 && ferns.count < 520) {
+    const x = (rnd() - 0.5) * WORLD * 0.9, z = (rnd() - 0.5) * WORLD * 0.9, h = heightAt(x, z);
+    if (h < 1.8 || h > 10.5 || pathMask(x, z) > 0.1 || pondD(x, z) < 1.3 || slopeAt(x, z) > 0.7) continue;
+    const g = groveMask(x, z);
+    if (rnd() > g * 0.9 + 0.01) continue;
+    ferns.add1(x, h - 0.05, z, 0.7 + rnd() * 0.8, rnd() * 6.28, jitter(0.25), 0.8 + rnd() * 0.5, 0.05);
   }
   // bushes
   tries = 0;
@@ -109,8 +148,8 @@ export function scatterNature(scene) {
   while (tries++ < 40000 && nf < 4200) {
     const x = (rnd() - 0.5) * WORLD * 0.92, z = (rnd() - 0.5) * WORLD * 0.92, h = heightAt(x, z);
     if (h < 1.5 || h > 10 || pathMask(x, z) > 0.08 || pondD(x, z) < 1.0 || slopeAt(x, z) > 0.55) continue;
-    const patch = fbm(x * 0.11, z * 0.11, 2, 33);
-    if (patch < 0.6 || rnd() > (patch - 0.55) * 3.5) continue;
+    const patch = fbm(x * 0.11, z * 0.11, 2, 33) * (0.5 + 0.75 * meadowMask(x, z));
+    if (patch < 0.45 || rnd() > (patch - 0.43) * 5) continue;
     const k = Math.floor(fbm(x * 0.03 + 5, z * 0.03, 2, 8) * 2.3 * pal.length) % pal.length;
     const m = fl[(k + (rnd() < 0.15 ? 1 : 0)) % pal.length];
     if (m.count >= 900) continue;

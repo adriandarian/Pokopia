@@ -21,7 +21,7 @@ export const GROVES = [
 export const LANDMARKS = [
   { kind: 'oak', x: 24, z: -10, s: 2.1 }, { kind: 'blossom', x: -4, z: 35, s: 1.9 },
   { kind: 'pine', x: -9, z: -25, s: 2.1 }, { kind: 'oak', x: -41, z: 21, s: 1.9 },
-  { kind: 'blossom', x: 5, z: 6, s: 1.5 }, { kind: 'oak', x: 36, z: 31, s: 1.8 },
+  { kind: 'blossom', x: -6, z: -3, s: 1.5 }, { kind: 'oak', x: 36, z: 31, s: 1.8 },
 ];
 const wobble = (x, z) => (fbm(x * 0.07 + 40, z * 0.07 - 12, 2, 17) - 0.5) * 7;
 export function meadowMask(x, z) {
@@ -41,6 +41,17 @@ const ROUTES = [
   [[2, 2], [10, 0], [20, -5], [31, -3], [42, 1], [50, 0]],      // hilltop -> east beach
   [[2, 2], [4, -9], [1, -19], [-4, -28], [-6, -36]],            // hilltop -> north
 ];
+/** Cheap distance to the path control polylines (used by heightAt to keep paths off cliffs). */
+export function routeDist(x, z) {
+  let best = 1e9;
+  for (const r of ROUTES) for (let i = 0; i < r.length - 1; i++) {
+    const ax = r[i][0], az = r[i][1], bx = r[i + 1][0] - ax, bz = r[i + 1][1] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz)));
+    const dx = ax + bx * t - x, dz = az + bz * t - z, d = dx * dx + dz * dz;
+    if (d < best) best = d;
+  }
+  return Math.sqrt(best);
+}
 export const PATH_PTS = [];
 for (const r of ROUTES) {
   const c = new THREE.CatmullRomCurve3(r.map(p => new THREE.Vector3(p[0], 0, p[1])), false, 'catmullrom', 0.5);

@@ -1,79 +1,115 @@
 import * as THREE from 'three';
-import { heightAt } from '../terrain.js';
+import { heightAt, WORLD } from '../terrain.js';
 import { fbm } from '../noise.js';
-import { WORLD } from '../terrain.js';
-import { applyWind, tickWind } from './wind.js';
+import { meadowMask, groveMask } from './features.js';
+import { windTime } from './wind.js';
 
+/** Rounded, tapered blades: 4 per tuft, 3 rows each (5 tris), dark base -> bright tip. */
 function tuftGeometry() {
-  const pos = [], nor = [], col = [], aw = [];
-  const blades = 5;
-  const base = new THREE.Color('#3f9a35'), tip = new THREE.Color('#b6ef6c'), c = new THREE.Color();
+  const pos = [], nor = [], aw = [], uvv = [];
+  const blades = 3;
   for (let b = 0; b < blades; b++) {
-    const a = (b / blades) * Math.PI * 2 + b * 0.7, r = 0.05 + (b % 2) * 0.06;
+    const a = (b / blades) * Math.PI * 2 + b * 0.9, r = 0.03 + (b % 2) * 0.07;
     const ox = Math.cos(a) * r, oz = Math.sin(a) * r;
-    const h = 0.38 + ((b * 37) % 5) * 0.09, w = 0.055;
-    const dir = a + 1.2, bx = Math.cos(dir) * 0.12 * h, bz = Math.sin(dir) * 0.12 * h;
-    const px = -Math.sin(dir) * w, pz = Math.cos(dir) * w;
-    const rows = [
-      [ox - px, 0, oz - pz, ox + px, 0, oz + pz, 0],
-      [ox - px * 0.75 + bx * 0.4, h * 0.5, oz - pz * 0.75 + bz * 0.4, ox + px * 0.75 + bx * 0.4, h * 0.5, oz + pz * 0.75 + bz * 0.4, 0.4],
-    ];
-    const tipP = [ox + bx * 2.2, h, oz + bz * 2.2];
-    const push = (p, t) => {
-      pos.push(...p); nor.push(0, 1, 0); aw.push(t);
-      c.copy(base).lerp(tip, t); col.push(c.r, c.g, c.b);
-    };
-    const [r0, r1] = rows;
-    const L0 = [r0[0], r0[1], r0[2]], R0 = [r0[3], r0[4], r0[5]], L1 = [r1[0], r1[1], r1[2]], R1 = [r1[3], r1[4], r1[5]];
-    push(L0, 0); push(R0, 0); push(R1, .45);
-    push(L0, 0); push(R1, .45); push(L1, .45);
-    push(L1, .45); push(R1, .45); push(tipP, 1);
+    const h = 0.26 + ((b * 37) % 5) * 0.06, w = 0.05;
+    const dir = a + 0.8 + b * 0.5, dx = Math.cos(dir), dz = Math.sin(dir);
+    const px = -dz, pz = dx; // blade width axis
+    const lean = 0.22 * h;
+    const rows = [[0, w, 0], [0.55, w * 0.7, 0.4 * lean], [1, 0.0, 1.9 * lean]];
+    const P = rows.map(([t, ww, l]) => [t, [ox + dx * l - px * ww, h * t - 0.0 * l, oz + dz * l - pz * ww], [ox + dx * l + px * ww, h * t, oz + dz * l + pz * ww]]);
+    const nrm = [dx * 0.3, 0.9, dz * 0.3];
+    const push = (p, t) => { pos.push(...p); nor.push(...nrm); aw.push(t); };
+    for (let i = 0; i < 2; i++) {
+      const [t0, L0, R0] = P[i], [t1, L1, R1] = P[i + 1];
+      push(L0, t0); push(R0, t0); push(R1, t1);
+      if (i < 1) { push(L0, t0); push(R1, t1); push(L1, t1); }
+    }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setAttribute('aw', new THREE.Float32BufferAttribute(aw, 1));
   return g;
 }
 
-export function buildGrass(scene, { free, pathMask, pondD, slopeAt, rnd }) {
-  const MAX = 36000;
-  const mat = applyWind(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }), { amp: 0.0, heightGain: 0.0, speed: 2.0 });
-  // grass sways in proportion to blade height (aw) not position.y
-  const base = mat.onBeforeCompile;
+export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd }) {
+  const CELL = 16, MAXD = 54;
+  const uFade = { value: new THREE.Vector4(0, 0, 0, 1) };
+  const mat = new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide });
   mat.onBeforeCompile = (sh) => {
-    base(sh);
-    sh.vertexShader = sh.vertexShader.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>')
-    sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n normal = normalize(vNormal);');
-    sh.vertexShader = sh.vertexShader.replace('float k = aw * (0.0000 + position.y * 0.0000)', 'float k = aw * 0.16');
+    sh.uniforms.uTime = windTime;
+    sh.uniforms.uFade = uFade;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>
+        uniform float uTime; uniform vec4 uFade; attribute float aw; varying float vT; varying float vF;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vT = aw;
+        vec3 iw = vec3(instanceMatrix[3]);
+        float dist = distance(iw.xz, uFade.xz);
+        vF = smoothstep(${MAXD.toFixed(1)}, ${(MAXD * 0.6).toFixed(1)}, dist);
+        transformed.y *= (0.25 + 0.75 * vF) * step(0.001, vF);
+        float ph = iw.x * 0.27 + iw.z * 0.19;
+        float gust = sin(uTime * 0.31 + iw.x * 0.045 + iw.z * 0.035) * 0.5 + 0.5;
+        float k = aw * aw * (0.05 + gust * 0.11);
+        transformed.x += sin(uTime * 1.35 + ph) * k + gust * 0.04 * aw * aw;
+        transformed.z += cos(uTime * 1.1 + ph * 1.4) * k * 0.6;`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n varying float vT; varying float vF;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        vec3 bladeC = mix(vec3(.08,.26,.07), vec3(.34,.64,.15), smoothstep(0.,.45,vT));
+        bladeC = mix(bladeC, vec3(.78,.93,.38), smoothstep(.55,1.,vT)*.7);
+        diffuseColor.rgb *= bladeC * bladeC * 1.0 * (1.15) ;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.12,.3,.07), (1.-vF)*.5);
+        diffuseColor.rgb *= mix(.62, 1., smoothstep(0.,.3,vT));`);;
   };
-  mat.customProgramCacheKey = () => 'grassWind';
-  const mesh = new THREE.InstancedMesh(tuftGeometry(), mat, MAX);
+  mat.customProgramCacheKey = () => 'grassV2';
+
+  const geo = tuftGeometry();
+  const cells = new Map();
   const d = new THREE.Object3D(), col = new THREE.Color();
+  const TARGET = 42000;
   let n = 0, tries = 0;
-  while (n < MAX && tries++ < MAX * 6) {
+  while (n < TARGET && tries++ < TARGET * 8) {
     const x = (rnd() - 0.5) * WORLD * 0.94, z = (rnd() - 0.5) * WORLD * 0.94, h = heightAt(x, z);
-    if (h < 1.45 || h > 11.5) continue;
+    if (h < 1.5 || h > 12.6) continue;
     const pm = pathMask(x, z);
-    if (pm > 0.3 || pondD(x, z) < 0.95) continue;
-    const sl = slopeAt(x, z);
-    if (sl > 0.6) continue;
-    // thin out near the sand fringe and path edges
-    const edgeFade = Math.min(1, (h - 1.45) / 1.0);
-    if (rnd() > edgeFade * (1 - pm * 2.2)) continue;
-    const tall = 0.6 + fbm(x * 0.1, z * 0.1, 2, 77) * 0.5;
-    d.position.set(x, h - 0.03, z);
-    d.rotation.set(0, rnd() * 6.28, 0);
-    const s = tall * (0.8 + rnd() * 0.6);
-    d.scale.set(s, s * (0.8 + rnd() * 0.5), s);
-    d.updateMatrix(); mesh.setMatrixAt(n, d.matrix);
-    mesh.setColorAt(n, col.setHSL(0.26 + (fbm(x * 0.06, z * 0.06, 2, 4) - 0.5) * 0.12 + (rnd() - 0.5) * 0.02, 0.55 + rnd() * 0.2, 0.72 + rnd() * 0.3));
+    if (pm > 0.34 || pondD(x, z) < 1.0) continue;
+    if (slopeAt(x, z) > 0.62) continue;
+    const m = meadowMask(x, z), g = groveMask(x, z);
+    // lush in meadows, patchy elsewhere, sparse under groves
+    const patchy = 0.55 + fbm(x * 0.13, z * 0.13, 2, 61) * 0.9;
+    const edgeFade = Math.min(1, (h - 1.5) / 1.0);
+    if (rnd() > edgeFade * Math.min(1, (0.55 + m * 0.5 - g * 0.15) * patchy) * (1 - pm * 2.6)) continue;
+    const key = Math.floor((x + WORLD / 2) / CELL) + ',' + Math.floor((z + WORLD / 2) / CELL);
+    let c = cells.get(key); if (!c) cells.set(key, c = []);
+    const tall = (0.62 + fbm(x * 0.1, z * 0.1, 2, 77) * 0.55) * (0.75 + m * 0.5);
+    const s = tall * (0.75 + rnd() * 0.7);
+    d.position.set(x, h - 0.04, z); d.rotation.set(0, rnd() * 6.28, 0);
+    d.scale.set(s * 1.1, s * (0.75 + rnd() * 0.6), s * 1.1); d.updateMatrix();
+    // per-clump hue variation: yellow-green meadow patches vs deep blue-green shade
+    const hue = 0.24 + (fbm(x * 0.05, z * 0.05, 2, 4) - 0.5) * 0.14 + (rnd() - 0.5) * 0.03 - g * 0.02 + m * 0.01;
+    col.setHSL(hue, 0.55 + rnd() * 0.25, 0.62 + rnd() * 0.3);
+    c.push([d.matrix.clone(), col.clone(), x, z]);
     n++;
   }
-  mesh.count = n;
-  mesh.castShadow = false; mesh.receiveShadow = true;
-  mesh.frustumCulled = false;
-  tickWind(mesh);
-  scene.add(mesh);
+  const meshes = [];
+  for (const [, list] of cells) {
+    const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+    let cx = 0, cz = 0;
+    list.forEach((e, i) => { mesh.setMatrixAt(i, e[0]); mesh.setColorAt(i, e[1]); cx += e[2]; cz += e[3]; });
+    mesh.userData.cx = cx / list.length; mesh.userData.cz = cz / list.length;
+    mesh.castShadow = false; mesh.receiveShadow = true;
+    mesh.computeBoundingSphere();
+    scene.add(mesh); meshes.push(mesh);
+  }
+  // distance culling + fade centre follow the camera
+  const prev = scene.onBeforeRender;
+  scene.onBeforeRender = function (r, s, camera, ...rest) {
+    prev && prev.call(this, r, s, camera, ...rest);
+    const cp = camera.position; uFade.value.set(cp.x, 0, cp.z, 1);
+    for (const m of meshes) {
+      const bs = m.boundingSphere, dd = Math.hypot(m.userData.cx - cp.x, m.userData.cz - cp.z);
+      m.visible = dd < MAXD + (bs ? bs.radius : CELL);
+    }
+  };
 }

@@ -11,17 +11,20 @@ const GradeShader = {
     tDiffuse: { value: null },
     tint: { value: new THREE.Color(1, 1, 1) },
     vignette: { value: 0.32 },
-    sat: { value: 1.12 },
-    contrast: { value: 1.04 },
+    sat: { value: 1.2 },
+    contrast: { value: 1.12 },
+    lift: { value: 0 },
   },
   vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-  fragmentShader: `uniform sampler2D tDiffuse;uniform vec3 tint;uniform float vignette,sat,contrast;varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse;uniform vec3 tint;uniform float vignette,sat,contrast,lift;varying vec2 vUv;
     void main(){
       vec4 c=texture2D(tDiffuse,vUv);
       vec3 col=c.rgb*tint;
       float l=dot(col,vec3(.2126,.7152,.0722));
-      col=mix(vec3(l),col,sat);
-      col=(col-.18)*contrast+.18;
+      col=mix(vec3(l),col,sat*(1.+.15*(1.-clamp(l*3.,0.,1.))));
+      col=.18*pow(max(col,0.)/.18,vec3(contrast)); // S-curve: deeper darks, punchier brights
+      col*=mix(vec3(.96,.985,1.05),vec3(1.05,1.01,.94),smoothstep(.04,.8,l)); // cool shadows, warm highlights
+      col+=lift*vec3(.45,.6,1.)*(1.-clamp(l*3.,0.,1.));
       vec2 d=vUv-.5; d.x*=1.15;
       float v=smoothstep(.28,.85,length(d));
       col*=1.-v*vignette;
@@ -53,6 +56,8 @@ export function setupPost(renderer, scene, camera) {
         renderer.toneMappingExposure = s.exp;
         bloom.strength = s.bloom;
         grade.uniforms.tint.value.copy(s.tint);
+        grade.uniforms.lift.value = 0.02 * (s.night || 0);
+        grade.uniforms.contrast.value = 1.12 - 0.07 * (s.night || 0);
       }
       composer.render(dt);
     },

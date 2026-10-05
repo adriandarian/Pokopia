@@ -9,8 +9,8 @@ export function roundTree(leaf = ['#5fbf45', '#7bd556', '#4aa83c'], seed = 1) {
   L.push(cyl(0.2, 0.42, 1.5, 7, BARK));
   L.push(cyl(0.12, 0.2, 1.2, 6, BARK2, { y: 1.3, tiltZ: 0.18 }));
   L.push(cyl(0.09, 0.14, 0.9, 6, BARK2, { y: 1.1, x: 0.05, tiltZ: -0.7 }));
-  const cs = [[0, 3.3, 0, 1.55], [0.95, 2.9, 0.3, 1.1], [-0.9, 2.95, -0.2, 1.15], [0.2, 3.0, 1.0, 1.05], [-0.2, 2.9, -1.0, 1.0], [0.1, 4.1, 0.1, 1.05], [0.9, 3.8, -0.7, 0.8], [-0.8, 3.7, 0.7, 0.85]];
-  cs.forEach((c, i) => L.push(blob(c[0], c[1], c[2], c[3], leaf[i % leaf.length], { seed: i + seed, sy: 0.82 })));
+  const cs = [[0, 3.3, 0, 1.55], [0.95, 2.9, 0.3, 1.1], [-0.9, 2.95, -0.2, 1.15], [0.1, 4.1, 0.1, 1.05], [0.1, 2.9, -1.0, 1.1], [-0.6, 3.8, 0.7, 0.85]];
+  cs.forEach((c, i) => L.push(blob(c[0], c[1], c[2], c[3], leaf[i % leaf.length], { seed: i + seed, sy: 0.82, detail: i === 0 ? 2 : 1, lump: 0.17 })));
   return merge(L);
 }
 export function pineTree(seed = 1) {
@@ -122,17 +122,15 @@ export function mushroom() {
 }
 export function flower(petal, center = '#ffd23f') {
   const L = [cyl(0.012, 0.016, 0.38, 4, '#4f9f3f', { aw: 0.2, shade: [0.8, 1.1] })];
-  // leaves
-  const lf = new THREE.SphereGeometry(0.06, 5, 4); lf.scale(1.6, 0.25, 0.7); lf.translate(0.07, 0.12, 0);
+  const lf = new THREE.CircleGeometry(0.07, 4); lf.scale(1.6, 1, 0.5); lf.rotateX(-Math.PI / 2 + 0.3); lf.translate(0.07, 0.12, 0);
   L.push(prep(lf, '#5cb04a', 0.2, [1, 1], 0));
   const np = 5;
   for (let i = 0; i < np; i++) {
     const a = (i / np) * Math.PI * 2;
-    const pg = new THREE.SphereGeometry(0.075, 6, 5); pg.scale(1.0, 0.35, 0.7);
-    pg.translate(0.09, 0, 0); pg.rotateZ(0.25); pg.rotateY(a); pg.translate(0, 0.38, 0);
+    const pg = new THREE.CircleGeometry(0.085, 4); pg.scale(1.15, 1, 1); pg.rotateX(-Math.PI / 2 + 0.35); pg.translate(0.085, 0, 0); pg.rotateY(a); pg.translate(0, 0.38, 0);
     L.push(prep(pg, petal, 1, [0.9, 1.1], 0.03));
   }
-  const cg = new THREE.SphereGeometry(0.055, 6, 5); cg.scale(1, 0.7, 1); cg.translate(0, 0.395, 0);
+  const cg = new THREE.CircleGeometry(0.05, 5); cg.rotateX(-Math.PI / 2 + 0.1); cg.translate(0, 0.395, 0);
   L.push(prep(cg, center, 1, [1, 1], 0));
   return merge(L);
 }
@@ -144,4 +142,37 @@ export function reed() {
     if (i % 2 === 0) L.push(cyl(0.06, 0.06, 0.32, 6, '#6b4128', { x: Math.cos(a) * 0.1, z: Math.sin(a) * 0.1, y: h - 0.15, aw: 1, shade: [0.9, 1] }));
   }
   return merge(L);
+}
+
+/** Fern: arching ribbon fronds, tapered, base-dark. */
+export function fern(color = '#3f9d4a') {
+  const L = [], N = 4, F = 7;
+  for (let f = 0; f < F; f++) {
+    const a = (f / F) * Math.PI * 2 + (f % 2) * 0.2, len = 0.75 + (f % 3) * 0.12, pos = [];
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, w = 0.14 * Math.sin(Math.PI * Math.min(1, t * 0.9 + 0.08)) * (1 - t * 0.4);
+      pts.push([t * len, 0.55 * Math.sin(t * 2.0) * len * 0.5 + 0.05 - 0.5 * t * t * len * 0.4, w]);
+    }
+    for (let i = 0; i < N; i++) {
+      const [x0, y0, w0] = pts[i], [x1, y1, w1] = pts[i + 1];
+      pos.push(x0, y0, -w0, x0, y0, w0, x1, y1, w1, x0, y0, -w0, x1, y1, w1, x1, y1, -w1);
+    }
+    let g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals(); g.rotateY(a);
+    g = prep(g, color, 1, [0.55, 1.15], 0.04);
+    const n = g.attributes.normal;
+    for (let i = 0; i < n.count; i++) n.setXYZ(i, n.getX(i) * 0.3, 1, n.getZ(i) * 0.3);
+    L.push(g);
+  }
+  return merge(L);
+}
+/** Tall standing stone for the hilltop circle. */
+export function standingStone() {
+  let g = new THREE.CylinderGeometry(0.45, 0.65, 2.2, 6, 2);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const k = 0.85 + 0.3 * Math.abs(Math.sin(p.getX(i) * 5 + p.getY(i) * 2)); p.setXYZ(i, p.getX(i) * k, p.getY(i) + 1.1, p.getZ(i) * k); }
+  g = prep(g, '#a8a095', 0, [0.6, 1.1], 0.05); g.computeVertexNormals();
+  return g;
 }
