@@ -17,9 +17,9 @@ function baseHeight(x, z) {
   const r = Math.hypot(x - SUMMIT.x, z - SUMMIT.z);
   let h = island * (6.0 + hills * 13.5 * (1 - 0.7 * m) + 5.5 * Math.exp(-(r * r) / 400)) - 3.2;
   // cliff ledges / terraces in rocky zones
-  const cliff = sstep(0.54, 0.66, fbm(x * 0.035 - 8, z * 0.035 + 4, 2, 9)) * sstep(1.8, 3.6, h) * (1 - m) * sstep(3, 9, routeDist(x, z));
-  const T = 3.4, t = h / T, f = t - Math.floor(t);
-  h += ((Math.floor(t) + sstep(0.45, 0.88, f)) * T - h) * cliff * 0.9;
+  const cliff = sstep(0.5, 0.62, fbm(x * 0.035 - 8, z * 0.035 + 4, 2, 9)) * sstep(1.8, 3.6, h) * (1 - m) * sstep(3, 9, routeDist(x, z));
+  const T = 3.4, t = h / T + (fbm(x * 0.18, z * 0.18, 2, 3) - 0.5) * 0.12, f = t - Math.floor(t);
+  h += ((Math.floor(t) + sstep(0.56, 0.78, f)) * T - h) * cliff * 0.96;
   // flat hilltop viewpoint
   h += (SUMMIT.h - h) * sstep(14, 5, r);
   return h;
@@ -41,18 +41,44 @@ export function heightAt(x, z) {
   return h;
 }
 
-export function buildTerrain(scene) {
-  const geo = new THREE.PlaneGeometry(WORLD, WORLD, RES, RES);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position, mask = new Float32Array(pos.count);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), z = pos.getZ(i), h = heightAt(x, z);
-    pos.setY(i, h);
-    mask[i] = h > 0.8 ? pathMask(x, z) : 0;
+/** One terrain chunk as an indexed grid with a short skirt so LOD borders never show cracks. */
+function chunkGeo(x0, z0, size, seg, grad) {
+  const n = seg + 1, pos = [], nor = [], msk = [], idx = [];
+  const push = (x, z, drop) => {
+    const h = heightAt(x, z);
+    pos.push(x, h - drop, z);
+    const e = 0.5, dx = heightAt(x + e, z) - heightAt(x - e, z), dz = heightAt(x, z + e) - heightAt(x, z - e);
+    const l = Math.hypot(dx, 2 * e, dz); nor.push(-dx / l, 2 * e / l, -dz / l);
+    msk.push(h > 0.8 ? pathMask(x, z) : 0);
+  };
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) push(x0 + i / seg * size, z0 + j / seg * size, 0);
+  for (let j = 0; j < seg; j++) for (let i = 0; i < seg; i++) {
+    const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+    idx.push(a, c, b, b, c, d);
   }
-  geo.setAttribute('aMask', new THREE.BufferAttribute(mask, 1));
-  geo.computeVertexNormals();
+  const ring = []; // boundary loop in order
+  for (let i = 0; i < seg; i++) ring.push([i, 0]);
+  for (let j = 0; j < seg; j++) ring.push([seg, j]);
+  for (let i = seg; i > 0; i--) ring.push([i, seg]);
+  for (let j = seg; j > 0; j--) ring.push([0, j]);
+  const base = pos.length / 3;
+  for (const [i, j] of ring) push(x0 + i / seg * size, z0 + j / seg * size, grad);
+  const m = ring.length;
+  for (let k = 0; k < m; k++) {
+    const [i0, j0] = ring[k], [i1, j1] = ring[(k + 1) % m];
+    const t0 = j0 * n + i0, t1 = j1 * n + i1, s0 = base + k, s1 = base + (k + 1) % m;
+    idx.push(t0, s0, t1, t1, s0, s1, t0, t1, s0, t1, s1, s0); // double-sided skirt
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('aMask', new THREE.Float32BufferAttribute(msk, 1));
+  g.setIndex(idx);
+  return g;
+}
 
+export function buildTerrain(scene) {
+  const CH = 6, SZ = WORLD / CH;
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0 });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uPond = { value: new THREE.Vector4(POND.x, POND.z, POND.r, POND_LEVEL) };
@@ -68,6 +94,10 @@ export function buildTerrain(scene) {
         float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
           return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x), f.y); }
         float fb(vec2 p){ float s=0., a=.5; for(int i=0;i<4;i++){ s+=a*vn(p); p=p*2.03+17.1; a*=.5; } return s; }
+        vec3 vor(vec2 p){ vec2 i=floor(p), f=fract(p); float md=8.; vec2 mid=vec2(0.);
+          for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){ vec2 g=vec2(float(x),float(y)); vec2 o=vec2(h21(i+g), h21(i+g+37.));
+            vec2 r=g+o*.8+.1-f; float d=dot(r,r); if(d<md){ md=d; mid=i+g; } }
+          return vec3(sqrt(md), h21(mid+3.1), h21(mid+9.7)); }
         vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }`)
       .replace('#include <color_fragment>', `
         vec2 xz = vW.xz; float h = vW.y;
@@ -83,6 +113,15 @@ export function buildTerrain(scene) {
         grass = mix(grass, vec3(.16,.42,.24), smoothstep(.55,.3,macro)*.35);
         grass *= .86 + .26*fine; grass *= .94 + .1*streak;
         grass *= .82 + .36*smoothstep(.2,.8,fb(wq*.9+3.));
+        // stylised painted clumps: voronoi tufts with lighter hearts, dark seams and blade strokes (fades with distance)
+        float dfade = smoothstep(48., 12., length(vViewPosition)) * smoothstep(.35, .1, 1. - normalize(vN).y);
+        vec3 v1 = vor(xz*1.1 + (wq-xz)*.5), v2 = vor(xz*.21+5.);
+        // flat painted patches (no round dabs): each polygonal cell gets a small tint shift
+        vec3 g2 = grass * mix(vec3(1.), mix(vec3(.93,.98,.92), vec3(1.07,1.05,.9), v1.y), dfade);
+        g2 *= 1. + dfade*(v1.z-.5)*.1;
+        g2 = mix(g2, g2*vec3(1.14,1.05,.7), v2.y*.4);
+        g2 = mix(g2, g2*vec3(.84,.98,1.0), smoothstep(.55,.9,v2.z)*.3);
+        grass = g2;
         // sand with ripples
         vec3 sand = mix(vec3(.95,.84,.6), vec3(.99,.91,.7), n2);
         sand *= .95 + .07*fine + .035*sin((wq.x*.9+wq.y*.55)*2.4 + n1*9.);
@@ -94,13 +133,17 @@ export function buildTerrain(scene) {
         vec3 col = mix(sand, grass, gm);
         // darker, drier tufty rim where grass meets sand
         col = mix(col, col*vec3(1.05,1.0,.78), smoothstep(.3,.0,abs(gm-.5)-.2)*.5);
-        // rock: layered strata on steep faces, ledge faces and summit stones
-        float rockM = smoothstep(.28,.55, slope + (n2-.5)*.12);
-        float band = sin(h*5.5 + n1*5. + n3*1.1);
-        vec3 rockC = mix(vec3(.62,.56,.52), vec3(.46,.4,.38), smoothstep(-.5,.5,band));
-        rockC = mix(rockC, vec3(.8,.72,.58), smoothstep(.55,.9,fb(wq*.8+h))*.28);
-        rockC = mix(rockC, vec3(.4,.52,.34), smoothstep(.55,.9,n2)*.25*(1.-slope*2.)); // moss
-        rockC *= .9 + .2*vn(vec2(xz.x+xz.y, h*3.)*4.);
+        // rock: cut faces with discrete strata layers, blocky seams and warm/cool variation
+        float rockM = smoothstep(.3,.5, slope + (n2-.5)*.1);
+        float layer = floor(h*2.3 + n1*1.6);
+        float lh = h21(vec2(layer, 7.3));
+        vec3 rockC = mix(mix(vec3(.66,.6,.54), vec3(.5,.45,.43), lh), vec3(.76,.67,.5), step(.72,lh)*.8);
+        float lf = fract(h*2.3 + n1*1.6);
+        rockC *= .9 + .13*smoothstep(.0,.2,lf) - .22*smoothstep(.86,1.,lf);   // dark seam under each layer
+        vec3 vr = vor(vec2((xz.x+xz.y*.7)*.9, h*1.7));
+        rockC *= .9 + .2*vr.y;  rockC *= 1. - .3*smoothstep(.34,.5,vr.x);
+        rockC = mix(rockC, vec3(.4,.52,.34), smoothstep(.55,.9,n2)*.3*smoothstep(.5,.3,slope)); // moss on gentler faces
+        rockC *= .92 + .14*vn(vec2(xz.x+xz.y, h*3.)*4.);
         col = mix(col, rockC, rockM);
         col *= 1. - .14*smoothstep(.1,.3,slope)*(1.-rockM*.5);
         // pond bank / mud ring + underwater bed gradient
@@ -125,11 +168,25 @@ export function buildTerrain(scene) {
         diffuseColor.rgb *= lin(clamp(col,0.,1.));
       `);
   };
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.receiveShadow = true; mesh.castShadow = true;
-  mesh.frustumCulled = false;
-  tickWind(mesh);
-  scene.add(mesh);
+  const group = new THREE.Group();
+  for (let cz = 0; cz < CH; cz++) for (let cx = 0; cx < CH; cx++) {
+    const x0 = -WORLD / 2 + cx * SZ, z0 = -WORLD / 2 + cz * SZ;
+    const lod = new THREE.Group();
+    const hi = new THREE.Mesh(chunkGeo(x0, z0, SZ, 40, 0.6), mat), lo = new THREE.Mesh(chunkGeo(x0, z0, SZ, 10, 0.9), mat);
+    for (const m of [hi, lo]) { m.receiveShadow = true; m.castShadow = true; }
+    hi.geometry.computeBoundingSphere(); lo.geometry.computeBoundingSphere();
+    lod.add(hi, lo); lod.userData.hi = hi; lod.userData.lo = lo;
+    lod.userData.c = new THREE.Vector3(x0 + SZ / 2, 0, z0 + SZ / 2);
+    group.add(lod);
+  }
+  // LOD distance is measured from each LOD object origin (0,0,0), so drive levels manually from chunk centres.
+  const cp = new THREE.Vector3();
+  const update = (camera) => { camera.getWorldPosition(cp); for (const l of group.children) { const c = l.userData.c, d = Math.hypot(c.x - cp.x, c.z - cp.z); const near = d < 46 + SZ * 0.5; l.userData.hi.visible = near; l.userData.lo.visible = !near; } };
+  const prev = scene.onBeforeRender;
+  scene.onBeforeRender = function (r, s, camera, ...rest) { prev && prev.call(this, r, s, camera, ...rest); update(camera); };
+  const mesh = group;
+  tickWind(group.children[0].userData.hi);
+  scene.add(group);
   return mesh;
 }
 

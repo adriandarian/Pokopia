@@ -2,6 +2,9 @@
 import * as THREE from 'three';
 import { state, saveSoon } from './state.js';
 import { on, emit } from './events.js';
+import { WARDROBE, SPECIES } from './data.js';
+import { eventFor } from './content.js';
+import { activeWishText } from './friends.js';
 
 const v = new THREE.Vector3();
 let objEl, arrowEl, api;
@@ -19,6 +22,7 @@ export function startGuide(a) {
   on('befriend', () => { if (state.tutorial < 3) advance(3); });
   on('gift', () => { if (state.tutorial < 3) advance(3); });
   on('play', () => setTimeout(() => paintObjective(), 900));
+  on('levelup', () => {}); 
   on('ui:open', () => arrowEl.classList.add('hidden'));
   on('discover', () => { if (state.tutorial === 1) advance(2); });
 }
@@ -27,11 +31,32 @@ function advance(n) {
   if (n === 1) emit('toast', { icon: '🌸', text: 'Petals are your treasure! Spend them in the wardrobe.', kind: 'good' });
   paintObjective();
 }
+let nextIdx = 0;
+function suggestions() {
+  const L = [], n = k => Object.entries(state.inv).filter(([x]) => x.startsWith(k + ':')).reduce((a, [, v]) => a + v, 0);
+  if (state.quests?.some(q => q.done && !q.claimed)) L.push(['⭐ Quest reward ready!', 'Open the quest list and claim your petals.']);
+  const w = activeWishText(); if (w) L.push([`🌟 ${w.sp} has a wish`, w.text]);
+  if (n('berry') + n('gem') > 0) L.push(['🎁 You have gifts to give', 'Walk up to a creature and press Give. Everyone has favourites!']);
+  const aff = WARDROBE.filter(x => !state.owned.includes(x.id) && !x.gift && x.price <= state.petals).sort((a, b) => b.price - a.price)[0];
+  if (aff) L.push([`👒 You can afford ${aff.icon} ${aff.name}!`, 'Try it on in the wardrobe.']);
+  const dinv = Object.values(state.decorInv || {}).reduce((a, b) => a + b, 0);
+  if (dinv) L.push(['🏡 Decorations ready to place', 'Open the island menu and tap Place.']); else if (state.petals >= 40) L.push(['🏡 Decorate your island', 'Buy a lantern or bench, then place it near home.']);
+  const left = SPECIES.filter(x => !state.discovered[x.id]).length; if (left) L.push([`🔍 ${left} creature${left > 1 ? 's' : ''} still to discover`, 'Explore new corners of the island.']);
+  const ev = eventFor(state.day); L.push([`${ev.icon} ${ev.name}`, ev.blurb]);
+  L.push(['💎 Collect gems and berries', 'Yellow gems are worth the most petals!']);
+  return L;
+}
 function paintObjective() {
   const s = STEPS[state.tutorial];
-  if (!s) { objEl.classList.add('hidden'); arrowEl.classList.add('hidden'); return; }
+  if (!s) {
+    const L = suggestions(), [t, sub] = L[nextIdx++ % L.length];
+    objEl.innerHTML = `<b>${t}</b><small>${sub}</small>`; objEl.classList.remove('hidden'); objEl.classList.add('next'); arrowEl.classList.add('hidden'); return;
+  }
+  objEl.classList.remove('next');
   objEl.innerHTML = `<b>🎯 ${s.text}</b><small>${s.sub}</small>`; objEl.classList.remove('hidden');
 }
+setInterval(() => { if (document.body.classList.contains('playing') && !STEPS[state.tutorial]) paintObjective(); }, 20000);
+
 function nearest(list, pos, pred) {
   let best = null, bd = 1e9;
   for (const o of list) { if (pred && !pred(o)) continue; const p = o.position || o.m?.position; const d = (p.x - pos.x) ** 2 + (p.z - pos.z) ** 2; if (d < bd) { bd = d; best = p; } }
@@ -49,11 +74,11 @@ export function updateGuide() {
   v.copy(tgt.pos); v.y += 1.6; v.project(api.camera);
   const W = innerWidth, H = innerHeight; let x = (v.x * 0.5 + 0.5) * W, y = (-v.y * 0.5 + 0.5) * H;
   const behind = v.z > 1; if (behind) { x = W - x; y = H; }
-  const m = 70, onscreen = !behind && x > m && x < W - m && y > m && y < H - m * 1.8;
+  const m = 70, onscreen = !behind && x > m && x < W - m && y > 130 && y < H - m * 2.2;
   const cx = W / 2, cy = H / 2; let ang = 0;
   if (onscreen) { ang = 180; y -= 34; } // bouncing marker above target
   else {
-    const dx = x - cx, dy = y - cy, k = Math.min((W / 2 - m) / Math.abs(dx || 1e-3), (H / 2 - m * 1.6) / Math.abs(dy || 1e-3));
+    const dx = x - cx, dy = y - cy, k = Math.min((W / 2 - m) / Math.abs(dx || 1e-3), (H / 2 - 130) / Math.abs(dy || 1e-3));
     x = cx + dx * k; y = cy + dy * k; ang = Math.atan2(dy, dx) * 180 / Math.PI + 90;
   }
   arrowEl.classList.remove('hidden'); arrowEl.classList.toggle('onscreen', onscreen);

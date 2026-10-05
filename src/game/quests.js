@@ -1,12 +1,13 @@
 import { state, save, addPetals } from './state.js';
 import { QUEST_POOL } from './data.js';
 import { on, emit } from './events.js';
+import { eventFor } from './content.js';
 
 // Pick 3 quests from distinct groups (so never two near-identical "collect N" quests), deterministic per day/set.
 function pick() {
   let s = state.day * 7919 + state.questSet * 104729 + 17;
   const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
-  const pool = [...QUEST_POOL], out = [], groups = new Set();
+  const pool = QUEST_POOL.filter(q => q.group !== 'event'), out = [], groups = new Set();
   // First slot: an easy gem-ish quest keeps the core loop obvious.
   const first = pool.filter(q => q.group === 'gems' || q.group === 'berries');
   const fq = first[Math.floor(rnd() * first.length)]; out.push(fq); groups.add(fq.group);
@@ -25,6 +26,7 @@ export const def = (id) => QUEST_POOL.find(q => q.id === id);
 export function ensureQuests() {
   if (state.quests && state.quests.some(q => !def(q.id))) state.quests = null; // old saves
   if (!state.quests) { state.quests = pick(); save(); }
+  if (eventFor(state.day).id === 'firefly' && !state.quests.some(q => q.id === 'ev_firefly')) { state.quests.push({ id: 'ev_firefly', progress: 0, done: false, claimed: false }); save(); }
 }
 export function allDone() { return state.quests.every(q => q.claimed); }
 export function newSet() { state.questSet++; state.quests = pick(); save(); emit('quests:changed'); }
@@ -46,6 +48,6 @@ function progress(ev, payload = {}) {
 }
 export function initQuests() {
   ensureQuests();
-  for (const ev of ['collect', 'pickup', 'befriend', 'discover', 'gift', 'explore', 'equip', 'emote']) on(ev, e => progress(ev, e));
+  for (const ev of ['collect', 'pickup', 'befriend', 'discover', 'gift', 'explore', 'equip', 'emote', 'place', 'decorbuy', 'wish', 'levelup']) on(ev, e => progress(ev, e));
   on('day', () => { state.quests = null; ensureQuests(); emit('quests:changed'); });
 }

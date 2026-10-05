@@ -40,6 +40,12 @@ export class Creatures {
         hopT: 0, sy: 1, svy: 0, jy: 0, jv: 0, speed: 0, affinity: 0, friend: false, heartT: 1 + rnd(), greetT: 2 + rnd() * 3, happy: 0, wasAir: false,
         idle: null, idleCD: 1 + rnd() * 5, mod: ZERO(), lodLevel: 2, ia: 0,
       });
+      // setFriend(true, { silent: true }): restore a saved friendship (no burst / no 'Friend!' pop); follows the player immediately
+      c.setFriend = (v = true, o = {}) => {
+        c.friend = !!v; c.idle = null; c.affinity = v ? 3 : 0; c.happy = v ? 0.6 : 0; c._fInit = true;
+        if (v && !o.silent) { c.jv = 7; this.fx.hearts(c.m.position.clone().setY(c.m.position.y + c.top), 7); this.fx.pop(c.m.position.clone().setY(c.m.position.y + c.top + 0.6), 'Friend!', '#ffd1e8'); }
+        return c;
+      };
       this.list.push(c);
     }
   }
@@ -64,6 +70,7 @@ export class Creatures {
       const toPlayer = Math.atan2(dx, dz);
       let want = 0, wantSpeed = 0, faceYaw = null;
 
+      if (c.friend && !c._fInit) { c._fInit = true; c.affinity = 3; c.happy = Math.max(c.happy, 0.6); c.idle = null; }   // friend flag set externally
       // ----- affinity & befriending -----
       const near = dist < 6, notice = dist < 11;
       c.happy = damp(c.happy, c.friend ? (dist < 9 ? 1 : 0.4) : (near ? 1 : 0), 4, dt);
@@ -79,7 +86,7 @@ export class Creatures {
       if (c.friend) {
         // follow the player in a loose trail
         const keep = 2.4 + (fi++ % 4) * 0.6;
-        if (dist > 40) { p.x = pp.x - 3; p.z = pp.z - 3; }
+        if (dist > 40) { for (const [ox, oz] of [[-3, -3], [3, -3], [-3, 3], [3, 3], [0, 0]]) if (heightAt(pp.x + ox, pp.z + oz) > 0.5 || (ox === 0 && oz === 0)) { p.x = pp.x + ox; p.z = pp.z + oz; break; } }
         else if (dist > keep + 0.4) { wantSpeed = Math.min(8, 1.5 + (dist - keep) * 1.6); faceYaw = toPlayer; }
         else if (dist < keep - 0.5) { wantSpeed = 0; faceYaw = toPlayer; }
         else faceYaw = toPlayer;
@@ -103,7 +110,7 @@ export class Creatures {
       const moving = c.speed > 0.35;
       if (moving) {
         const nx = p.x + c.dirX * c.speed * dt, nz = p.z + c.dirZ * c.speed * dt, nh = heightAt(nx, nz);
-        if (nh > 0.4) { p.x = nx; p.z = nz; } else { c.walking = false; c.speed = 0; }
+        if (nh > 0.5) { p.x = nx; p.z = nz; } else { c.walking = false; c.speed = 0; }
       }
       if (faceYaw !== null) c.m.rotation.y += wrapPi(faceYaw - c.m.rotation.y) * (1 - Math.exp(-(moving ? 9 : 5) * dt));
 
@@ -131,7 +138,8 @@ export class Creatures {
         const q = c.hopT % 1; hop = 4 * q * (1 - q) * (0.28 + c.speed * 0.06);
         if (c.hopT >= 1) { c.hopT -= 1; c.sy = 0.8; c.svy = 0; if (c.speed > 2) this.fx.dust(p, 2, 0.6); }
       } else c.hopT = 0;
-      const ground = heightAt(p.x, p.z);
+      let ground = heightAt(p.x, p.z);
+      if (ground < 0.3 && !c.pin) { for (let r = 1; r < 8 && ground < 0.3; r++) for (let a = 0; a < 6.28; a += 0.8) { const tx = p.x + Math.cos(a) * r, tz = p.z + Math.sin(a) * r, th = heightAt(tx, tz); if (th > 0.6) { p.x = tx; p.z = tz; ground = th; break; } } }
       p.y = ground + hop + c.jy;
       const airborne = air || hop > 0.04;
       c.blob.position.y = 0.05 - (hop + c.jy) + 0.0; c.blob.scale.setScalar(Math.max(0.5, 1 - (hop + c.jy) * 0.25));
@@ -190,23 +198,29 @@ function berryGeo(kind) {
   if (kind === 'straw') {   // strawberry: tapered body, calyx leaves, stem, speckles, glossy highlight
     it.push({ geo: sphere(), color: '#ff4d6d', pos: [0, 0.02, 0], scale: [0.27, 0.25, 0.27] });
     it.push({ geo: sphere(), color: '#ff4d6d', pos: [0, -0.1, 0], scale: [0.2, 0.18, 0.2] });
-    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283; it.push({ geo: new THREE.ConeGeometry(0.07, 0.17, 5), color: '#4fbf4f', pos: [Math.sin(a) * 0.12, 0.25, Math.cos(a) * 0.12], rot: [Math.cos(a) * 1.15, 0, -Math.sin(a) * 1.15] }); }
-    it.push({ geo: new THREE.CylinderGeometry(0.018, 0.024, 0.14, 6), color: '#3f9a3a', pos: [0, 0.35, 0], rot: [0.2, 0, 0.15] });
+    for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283; it.push({ geo: new THREE.ConeGeometry(0.09, 0.24, 5), color: '#8cff4a', pos: [Math.sin(a) * 0.12, 0.25, Math.cos(a) * 0.12], rot: [Math.cos(a) * 1.15, 0, -Math.sin(a) * 1.15] }); }
+    it.push({ geo: new THREE.CylinderGeometry(0.022, 0.03, 0.2, 6), color: '#7a4a1e', pos: [0, 0.38, 0], rot: [0.2, 0, 0.15] });
+    for (const sx of [-1, 1]) it.push({ geo: sphere(), color: '#9cff5a', pos: [sx * 0.12, 0.31, 0], scale: [0.16, 0.035, 0.08], rot: [0, 0, sx * 0.4] });
     for (let i = 0; i < 12; i++) { const a = i * 2.4, y = -0.18 + (i % 4) * 0.1, r = 0.27 * Math.sqrt(Math.max(0.1, 1 - ((y - 0.02) / 0.25) ** 2)) * (y < -0.05 ? 0.8 : 1); it.push({ geo: sphere(), color: '#ffe9a0', pos: [Math.sin(a) * r, y, Math.cos(a) * r], scale: [0.022, 0.034, 0.022] }); }
-    it.push({ geo: sphere(), color: '#ffffff', pos: [-0.1, 0.12, 0.2], scale: [0.05, 0.07, 0.03], rot: [0, -0.5, 0.4] });
+    it.push({ geo: sphere(), color: '#ffffff', pos: [-0.1, 0.1, 0.2], scale: [0.09, 0.12, 0.05], rot: [0, -0.5, 0.4] });
   } else {                   // blueberry: round, crown calyx, bloom speckle, highlight
     it.push({ geo: sphere(), color: '#7d58f0', pos: [0, 0, 0], scale: [0.27, 0.26, 0.27] });
-    for (let i = 0; i < 5; i++) { const a = i / 5 * 6.283; it.push({ geo: new THREE.ConeGeometry(0.045, 0.1, 4), color: '#4a3aa8', pos: [Math.sin(a) * 0.075, 0.25, Math.cos(a) * 0.075], rot: [Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3] }); }
+    for (let i = 0; i < 5; i++) { const a = i / 5 * 6.283; it.push({ geo: new THREE.ConeGeometry(0.08, 0.2, 4), color: '#8affd8', pos: [Math.sin(a) * 0.09, 0.25, Math.cos(a) * 0.075], rot: [Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3] }); }
     it.push({ geo: sphere(), color: '#2f2570', pos: [0, 0.25, 0], scale: [0.045, 0.03, 0.045] });
+    it.push({ geo: new THREE.CylinderGeometry(0.022, 0.03, 0.2, 6), color: '#7a4a1e', pos: [0, 0.36, 0], rot: [0.2, 0, 0.15] });
+    for (const sx of [-1, 1]) it.push({ geo: sphere(), color: '#9cff5a', pos: [sx * 0.13, 0.33, 0], scale: [0.17, 0.035, 0.09], rot: [0, 0, sx * 0.45] });
+    it.push({ geo: sphere(), color: '#5a3ad0', pos: [0, -0.1, 0], scale: [0.26, 0.17, 0.26] });
     for (let i = 0; i < 9; i++) { const a = i * 2.4, y = -0.1 + (i % 3) * 0.1, r = 0.26 * Math.sqrt(Math.max(0.1, 1 - (y / 0.26) ** 2)); it.push({ geo: sphere(), color: '#b9a4ff', pos: [Math.sin(a) * r, y, Math.cos(a) * r], scale: [0.03, 0.03, 0.02] }); }
-    it.push({ geo: sphere(), color: '#ffffff', pos: [-0.1, 0.1, 0.2], scale: [0.05, 0.065, 0.03], rot: [0, -0.5, 0.4] });
+    it.push({ geo: sphere(), color: '#ffffff', pos: [-0.1, 0.08, 0.2], scale: [0.09, 0.115, 0.05], rot: [0, -0.5, 0.4] });
+    it.push({ geo: sphere(), color: '#b8f5ff', pos: [0.12, -0.08, 0.2], scale: [0.04, 0.05, 0.03] });
   }
-  return mergeColored(it);
+  const g = mergeColored(it); g.scale(1.55, 1.55, 1.55); return g;
 }
 
 let _star;
 export class Collectibles {
   constructor(scene, onCollect) {
+    if (typeof window !== 'undefined') window.__collect = this; // QA hook
     this.onCollect = onCollect; this.items = []; this.scene = scene; this.fx = getFX(scene); this.lastT = 0; this.time = 0;
     this.uTime = { value: 0 };
     const gem = gemGeo(), uT = this.uTime;

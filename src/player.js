@@ -7,6 +7,7 @@ export const buildHero = _buildHero;
 const UP = new THREE.Vector3(0, 1, 0);
 const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
 const groundAt = (x, z) => Math.max(heightAt(x, z), -0.4);
+const SEA_BLOCK = -0.3;   // wading in the shallows is fine; deeper than this is the island edge
 
 export class Player {
   constructor(scene, camera, dom) {
@@ -14,7 +15,7 @@ export class Player {
     this.hero = this.mesh.userData.hero;
     this.fx = getFX(scene);
     this.camera = camera; this.vel = new THREE.Vector3(); this.onGround = true;
-    this.keys = {}; this.yaw = 0; this.pitch = 0.42; this.dist = 11; this.t = 0;
+    this.keys = {}; this.yaw = 0; this.pitch = 0.58; this.dist = 12; this.t = 0;
     this.speed = 0; this.moveDir = new THREE.Vector3(); this.coyote = 0; this.jumpBuf = 0; this.fov = camera.fov; this.baseFov = camera.fov;
     this.camDist = this.dist; this.lookAt = new THREE.Vector3(); this.camInit = false; this.vyPrev = 0;
     this.mesh.position.set(0, heightAt(0, 0), 0);
@@ -54,7 +55,19 @@ export class Player {
       const accel = moving ? (this.onGround ? 9 : 4) : (this.onGround ? 12 : 1.5);
       this.speed = damp(this.speed, moving ? top : 0, accel, dt);
       if (this.speed < 0.05) this.speed = 0;
-      p.x += this.moveDir.x * this.speed * dt; p.z += this.moveDir.z * this.speed * dt;
+      // soft island boundary: shore slows you down, the sea (ground < SEA_BLOCK) blocks, and you slide along the edge
+      {
+        const h0 = heightAt(p.x, p.z), ahead = heightAt(p.x + this.moveDir.x * 1.4, p.z + this.moveDir.z * 1.4);
+        const edge = THREE.MathUtils.clamp((ahead - SEA_BLOCK) / 0.55, 0, 1);   // 1 = open land, 0 = at the wall
+        const k = edge * edge * (3 - 2 * edge);
+        const vx = this.moveDir.x * this.speed * dt * (0.35 + 0.65 * k), vz = this.moveDir.z * this.speed * dt * (0.35 + 0.65 * k);
+        const ok = (x, z) => heightAt(x, z) > SEA_BLOCK && Math.abs(x) < 61 && Math.abs(z) < 61 || heightAt(x, z) > h0 + 0.01;
+        this.blocked = false;
+        if (ok(p.x + vx, p.z + vz)) { p.x += vx; p.z += vz; }
+        else if (ok(p.x + vx, p.z)) p.x += vx;
+        else if (ok(p.x, p.z + vz)) p.z += vz;
+        else { this.blocked = true; this.speed *= 0.6; }
+      }
 
       // jump with coyote time + input buffer
       this.coyote = this.onGround ? 0.1 : this.coyote - dt; this.jumpBuf -= dt;
@@ -87,7 +100,7 @@ export class Player {
 
     // ---- camera: smooth follow, terrain collision, FOV kick ----
     const cp = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
-    const pivot = new THREE.Vector3(p.x, damp(this._py ?? p.y, p.y, 6, dt) + 1.9, p.z); this._py = pivot.y - 1.9;
+    const pivot = new THREE.Vector3(p.x, damp(this._py ?? p.y, p.y, 6, dt) + 2.1, p.z); this._py = pivot.y - 2.1;
     let limit = this.dist;
     for (let s = 1; s <= 12; s++) {
       const d = this.dist * s / 12, x = pivot.x + cp.x * d, z = pivot.z + cp.z * d, y = pivot.y + cp.y * d;

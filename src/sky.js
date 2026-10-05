@@ -3,7 +3,7 @@ import { WORLD, heightAt } from './terrain.js';
 import { buildAmbientLife } from './fx/life.js';
 
 const WATER_Y = -0.4;
-const DAY_LENGTH = 360; // seconds per full day
+const DAY_SECONDS = 660, NIGHT_SECONDS = 150; // real seconds for daylight (5.2h-19.2h) and for night: ~13.5 min/day, mostly golden daylight
 const C = (h) => new THREE.Color(h);
 
 // Palette keyframes keyed by sun elevation. Hexes are sRGB (converted to linear by THREE.Color) so night/dusk
@@ -74,12 +74,13 @@ export function buildSky(scene) {
   const sun = new THREE.DirectionalLight('#fff1d0', 2.6);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  const sc = sun.shadow.camera; sc.left = -80; sc.right = 80; sc.top = 80; sc.bottom = -80; sc.near = 1; sc.far = 320;
-  sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04; sun.shadow.radius = 3;
+  const sc = sun.shadow.camera; sc.left = -72; sc.right = 72; sc.top = 72; sc.bottom = -72; sc.near = 1; sc.far = 320;
+  sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.05; sun.shadow.radius = 4; sun.shadow.blurSamples = 12;
+  sun.shadow.intensity = 0.62; // soft, coloured shadows: the rest of the shadow darkness comes from hemi + fill
   sun.shadow.autoUpdate = false; sun.shadow.needsUpdate = true; // re-render the shadow map every 2nd frame (halves ~560 shadow draw calls)
   scene.add(sun);
   // cool fill / rim from the side opposite the sun (sky bounce by day, moon rim by night); no shadows
-  const fill = new THREE.DirectionalLight('#8fb0ff', 0.3);
+  const fill = new THREE.DirectionalLight('#a898ff', 0.3);
   scene.add(fill);
 
   const state = {
@@ -138,8 +139,8 @@ export function buildSky(scene) {
   for (let i = 0; i < NC; i++) {
     const low = i % 2 === 0;
     const w = (low ? 26 : 16) + rnd() * 24, n = 14 + Math.floor(rnd() * 8);
-    const a = rnd() * Math.PI * 2, r = low ? 130 + rnd() * 230 : 80 + rnd() * 240;
-    const cx = Math.cos(a) * r, cy = low ? 34 + rnd() * 22 : 60 + rnd() * 30, cz = Math.sin(a) * r;
+    const a = rnd() * Math.PI * 2, r = low ? 120 + rnd() * 220 : 90 + rnd() * 120;
+    const cx = Math.cos(a) * r, cy = low ? 30 + rnd() * 18 : 46 + rnd() * 24, cz = Math.sin(a) * r;
     const hgt = w * 0.32;
     for (let j = 0; j < n; j++) {
       const u = rnd() * 2 - 1, hump = Math.sqrt(Math.max(1 - u * u, 0));
@@ -168,7 +169,7 @@ export function buildSky(scene) {
     vertexShader: `attribute vec3 iPos,iLoc;attribute vec2 iSc;attribute float iSeed;uniform float drift;uniform vec3 sunDir;
       varying vec2 vUv;varying float vLit,vDist,vSeed;
       void main(){
-        vec3 p=iPos;p.x=mod(p.x+drift+420.,840.)-420.;
+        vec3 p=iPos;p.x=mod(p.x+drift*(.7+iSeed*.0)+420.,840.)-420.; p.y+=sin(drift*.02+iPos.x*.05)*.8;
         vec4 mv=viewMatrix*vec4(p,1.);
         float a=iSeed*6.283,c=cos(a),s=sin(a);
         vec2 q=position.xy;q=vec2(c*q.x-s*q.y,s*q.x+c*q.y);
@@ -180,7 +181,9 @@ export function buildSky(scene) {
     fragmentShader: `uniform sampler2D map;uniform vec3 litCol,shadCol,hor;varying vec2 vUv;varying float vLit,vDist,vSeed;
       void main(){
         float a=texture2D(map,vUv).a;
-        vec3 col=mix(shadCol,litCol,smoothstep(.05,.95,vLit));
+        float gy=vUv.y; // bright tops, shaded bellies on every puff
+        vec3 col=mix(shadCol,litCol,smoothstep(.05,.95,clamp(vLit+(gy-.5)*.55,0.,1.)));
+        col+=litCol*(1.-smoothstep(0.,.5,texture2D(map,vUv).a))*.25;
         col=mix(col,hor,smoothstep(160.,480.,vDist)*.55);
         gl_FragColor=vec4(col,a*.9*(1.-smoothstep(420.,560.,vDist)));
       }`,
@@ -239,32 +242,39 @@ export function buildSky(scene) {
         vec3 Ns=normalize(vec3(-g.x*.9,1.,-g.y*.9));
         vec3 N=normalize(vec3(-g.x*.55,1.,-g.y*.55));
         float dd=1.-exp(-depth*.75);
+        float pat=vn(w.xz*.035+vec2(time*.01,0.))*.6+vn(w.xz*.09-vec2(0.,time*.015))*.4;
         vec3 col=mix(shallow,deep,dd);
+        col=mix(col,deep*vec3(.7,.9,1.15),smoothstep(.35,.8,pat)*dd*.6); // deep-water colour patches
+        col=mix(col,shallow*vec3(1.1,1.05,.8),(1.-smoothstep(0.,.6,depth))*.5); // sandy refraction tint at the rim
         vec3 R=reflect(-V,N); R.y=abs(R.y);
         vec3 skyc=skyCol(R);
         float fres=.03+.97*pow(1.-max(dot(V,N),0.),4.);
         col*=light*mix(vec3(1.),sunCol,.4);
         col=mix(col,skyc,clamp(fres,0.,.66));
         vec3 Rs=reflect(-V,Ns); Rs.y=abs(Rs.y); float sds=max(dot(Rs,sunDir),0.);
-        float spec=pow(sds,300.)*4.+pow(sds,60.)*.18;
+        float spec=pow(sds,300.)*4.+pow(sds,60.)*.3+pow(sds,14.)*.12;
         float sparkle=smoothstep(.55,.9,vn(w.xz*5.+time*vec2(.8,.5)))*smoothstep(.5,.95,vn(w.xz*2.3-time*.6));
-        col+=sunCol*(spec*(.4+sparkle*1.6));
+        float glit=smoothstep(.72,.95,vn(w.xz*11.+time*vec2(1.1,.7)))*smoothstep(.6,.95,vn(w.xz*3.1-time*.5));
+        col+=sunCol*(spec*(.4+sparkle*1.6)+glit*pow(sds,10.)*2.2);
+        float streak=smoothstep(.62,.8,vn(vec2(w.x*.35+time*.12,w.z*.04)))*smoothstep(.55,.75,vn(w.xz*.6+time*.1))*smoothstep(3.,.8,dist/60.)*smoothstep(.3,1.2,depth);
+        col=mix(col,vec3(.9,1.,1.)*(.4+.6*light),streak*.35);
         // shoreline: depth-faded foam with lace, thin bright leading edge, dark wet film
         float n=vn(w.xz*1.4+time*.2);
         float wash=.5+.5*sin(time*.9+n*3.);
         float edge=depth+n*.10;
         float lace=smoothstep(.40,.75,vn(w.xz*7.+vec2(time*.15,-time*.1)));
-        float lead=smoothstep(.09,.0,edge);
+        float lead=smoothstep(.16,.0,edge)*(.6+.4*wash);
         float trail=smoothstep(.20+wash*.32,.02,edge)*(.35+.65*lace);
         float band=smoothstep(.05,.0,abs(edge-(.55+wash*.4))-.03)*.5*lace*smoothstep(1.,.3,depth);
         float f=clamp(lead*.95+trail*.85+band,0.,1.)*(1.-smoothstep(.0,1.3,depth)*.4);
         float film=smoothstep(.16,.0,depth);
-        col=mix(col,col*vec3(.55,.5,.42),film*.55);
+        float recede=smoothstep(.5,1.,1.-wash);
+        col=mix(col,col*vec3(.5,.44,.36),smoothstep(.34,.0,depth)*(.45+.4*recede)); // dark wet band where waves recede
         col=mix(col,vec3(.97,1.,1.)*(.45+.55*light),f);
-        float alpha=mix(.42,1.,smoothstep(0.,2.0,depth));
-        alpha=mix(alpha,.62,film*.5);
-        alpha=max(alpha,f);
-        alpha*=smoothstep(.0,.025,depth+f*.05);
+        float alpha=mix(.28,1.,smoothstep(0.,1.6,depth));
+        alpha=mix(alpha,.55,film*.4);
+        alpha=max(alpha,f*.92);
+        alpha*=smoothstep(.0,.12,depth+f*.12); // long soft fade: no hard waterline seam
         gl_FragColor=vec4(col,alpha);
         #include <fog_fragment>
       }`,
@@ -290,7 +300,7 @@ export function buildSky(scene) {
     state.fog.copy(k.fog);
     scene.fog.color.copy(k.fog); scene.background.copy(k.hor);
     scene.fog.near = 160 + 40 * Math.max(e, 0); scene.fog.far = 720 + 80 * Math.max(e, 0);
-    hemi.color.copy(k.hemiSky); hemi.groundColor.copy(k.hemiGnd); hemi.intensity = k.amb;
+    hemi.color.copy(k.hemiSky); hemi.groundColor.copy(k.hemiGnd); hemi.intensity = k.amb * 1.18;
     if (e > -0.12) {
       ld.copy(state.dir); ld.y = Math.max(ld.y, 0.07); ld.normalize();
       sun.position.copy(ld).multiplyScalar(130); sun.color.copy(k.sun);
@@ -302,7 +312,7 @@ export function buildSky(scene) {
     }
     // fill: opposite side of the sun, cool
     fill.position.set(-state.dir.x * 100, 40, -state.dir.z * 100);
-    fill.color.set('#8fb0ff').lerp(k.hemiSky, 0.25); fill.intensity = k.fill;
+    fill.color.set('#a39aff').lerp(k.hemiSky, 0.2); fill.intensity = k.fill * 1.5;
     const night = 1 - SM(e, -0.2, 0.04);
     skyMat.uniforms.night.value = night;
     state.dusk = skyMat.uniforms.dusk.value = THREE.MathUtils.clamp(1 - Math.abs(e + 0.02) / 0.28, 0, 1);
@@ -322,7 +332,10 @@ export function buildSky(scene) {
     setHour(h) { state.hour = h; state.auto = false; apply(); sun.shadow.needsUpdate = true; },
     update(t) {
       const dt = Math.min(Math.max(t - last, 0), 0.1); last = t;
-      if (state.auto) state.hour = (state.hour + dt * 24 / DAY_LENGTH) % 24;
+      if (state.auto) {
+        const isDay = state.hour >= 5.2 && state.hour < 19.2;
+        state.hour = (state.hour + dt * (isDay ? 14 / DAY_SECONDS : 10 / NIGHT_SECONDS)) % 24;
+      }
       apply(); if ((fr++ & 1) === 0) sun.shadow.needsUpdate = true;
       water.material.uniforms.time.value = t; skyMat.uniforms.time.value = t;
       water.position.y = WATER_Y + 0.07 * (0.5 + 0.5 * Math.sin(t * 0.7)) + 0.03 * Math.sin(t * 0.31 + 1);

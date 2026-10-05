@@ -3,6 +3,7 @@ import { heightAt, WORLD } from '../terrain.js';
 import { fbm } from '../noise.js';
 import { meadowMask, groveMask } from './features.js';
 import { windTime } from './wind.js';
+import { world } from '../chars/fx.js';
 
 /** Rounded, tapered blades: 4 per tuft, 3 rows each (5 tris), dark base -> bright tip. */
 function tuftGeometry() {
@@ -33,21 +34,22 @@ function tuftGeometry() {
 }
 
 export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd }) {
-  const CELL = 16, MAXD = 54;
-  const uFade = { value: new THREE.Vector4(0, 0, 0, 1) };
-  const mat = new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide });
+  const CELL = 16, MAXD = 38;
+  const uFade = { value: new THREE.Vector4(0, 0, 0, 1) }, uPlayer = { value: new THREE.Vector3(1e5, 0, 1e5) };
+  const mat = new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide, emissive: '#1d4010', emissiveIntensity: 0.55 });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = windTime;
-    sh.uniforms.uFade = uFade;
+    sh.uniforms.uFade = uFade; sh.uniforms.uPlayer = uPlayer;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-        uniform float uTime; uniform vec4 uFade; attribute float aw; varying float vT; varying float vF;`)
+        uniform float uTime; uniform vec4 uFade; uniform vec3 uPlayer; attribute float aw; varying float vT; varying float vF;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vT = aw;
         vec3 iw = vec3(instanceMatrix[3]);
         float dist = distance(iw.xz, uFade.xz);
         vF = smoothstep(${MAXD.toFixed(1)}, ${(MAXD * 0.6).toFixed(1)}, dist);
-        transformed.y *= (0.25 + 0.75 * vF) * step(0.001, vF);
+        float pf = smoothstep(0.9, 2.7, distance(iw.xz, uPlayer.xz)); // flatten grass around the hero so feet stay visible
+        transformed.y *= (0.25 + 0.75 * vF) * step(0.001, vF) * (0.12 + 0.88 * pf);
         float ph = iw.x * 0.27 + iw.z * 0.19;
         float gust = sin(uTime * 0.31 + iw.x * 0.045 + iw.z * 0.035) * 0.5 + 0.5;
         float k = aw * aw * (0.05 + gust * 0.11);
@@ -56,11 +58,11 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd }) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n varying float vT; varying float vF;')
       .replace('#include <color_fragment>', `#include <color_fragment>
-        vec3 bladeC = mix(vec3(.08,.26,.07), vec3(.34,.64,.15), smoothstep(0.,.45,vT));
+        vec3 bladeC = mix(vec3(.16,.37,.1), vec3(.36,.66,.16), smoothstep(0.,.45,vT));
         bladeC = mix(bladeC, vec3(.78,.93,.38), smoothstep(.55,1.,vT)*.7);
         diffuseColor.rgb *= bladeC * bladeC * 1.0 * (1.15) ;
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.12,.3,.07), (1.-vF)*.5);
-        diffuseColor.rgb *= mix(.62, 1., smoothstep(0.,.3,vT));`);;
+        diffuseColor.rgb *= mix(.8, 1., smoothstep(0.,.3,vT));`);;
   };
   mat.customProgramCacheKey = () => 'grassV2';
 
@@ -106,7 +108,7 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd }) {
   const prev = scene.onBeforeRender;
   scene.onBeforeRender = function (r, s, camera, ...rest) {
     prev && prev.call(this, r, s, camera, ...rest);
-    const cp = camera.position; uFade.value.set(cp.x, 0, cp.z, 1);
+    const cp = camera.position; uFade.value.set(cp.x, 0, cp.z, 1); uPlayer.value.copy(world.playerPos);
     for (const m of meshes) {
       const bs = m.boundingSphere, dd = Math.hypot(m.userData.cx - cp.x, m.userData.cz - cp.z);
       m.visible = dd < MAXD + (bs ? bs.radius : CELL);

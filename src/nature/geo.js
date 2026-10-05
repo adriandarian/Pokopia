@@ -26,7 +26,7 @@ export function prep(g, color, aw = 0, shade = [0.75, 1.05], jitter = 0.06) {
 export const merge = (list) => { const g = mergeGeometries(list, false); g.computeBoundingSphere(); return g; };
 
 /** Lumpy soft blob with outward (sphere) normals so canopies read as puffy clouds. */
-export function blob(x, y, z, r, color, { sy = 0.85, detail = 2, lump = 0.14, aw = 1, shade = [0.8, 1.12], seed = 1 } = {}) {
+export function blob(x, y, z, r, color, { sy = 0.85, detail = 2, lump = 0.14, aw = 1, shade = [0.93, 1.12], seed = 1, warm = true } = {}) {
   let g = new THREE.IcosahedronGeometry(r, detail);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
@@ -40,7 +40,11 @@ export function blob(x, y, z, r, color, { sy = 0.85, detail = 2, lump = 0.14, aw
   const pos = g.attributes.position, nor = g.attributes.normal, v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     v.set(pos.getX(i), pos.getY(i) / sy, pos.getZ(i)).normalize();
-    nor.setXYZ(i, v.x, v.y * 0.8 + 0.2, v.z);
+    nor.setXYZ(i, v.x, v.y * 0.6 + 0.45, v.z);
+    if (warm) { // warmer, lighter undersides so canopies never go black in shade
+      const t = THREE.MathUtils.clamp(v.y * 0.5 + 0.5, 0, 1), k = (1 - t) * (1 - t), cl = g.attributes.color;
+      cl.setXYZ(i, cl.getX(i) * (1 + 0.16 * k), cl.getY(i) * (1 + 0.05 * k), cl.getZ(i) * (1 - 0.22 * k));
+    }
   }
   g.translate(x, y, z);
   return g;
@@ -53,9 +57,15 @@ export function cyl(rt, rb, h, seg, color, { x = 0, y = 0, z = 0, aw = 0, shade 
   g.translate(x, y, z);
   return g;
 }
-export function cone(r, h, seg, color, { y = 0, aw = 1, shade = [0.6, 1.1] } = {}) {
-  let g = new THREE.ConeGeometry(r, h, seg, 3, false);
+export function cone(r, h, seg, color, { y = 0, aw = 1, shade = [0.82, 1.12] } = {}) {
+  let g = new THREE.ConeGeometry(r, h, seg, 1, false);
   g.translate(0, h / 2 + y, 0);
+  const y0 = y;
   g = prep(g, color, aw, shade, 0.04);
+  const nr = g.attributes.normal, cl = g.attributes.color;
+  for (let i = 0; i < nr.count; i++) { // bias normals upward, warm the lower rim of each tier
+    nr.setXYZ(i, nr.getX(i) * 0.8, nr.getY(i) * 0.5 + 0.55, nr.getZ(i) * 0.8);
+    const y = g.attributes.position.getY(i) - y0; if (y < 0.35) cl.setXYZ(i, cl.getX(i) * 1.12, cl.getY(i) * 1.05, cl.getZ(i) * 0.85);
+  }
   return g;
 }

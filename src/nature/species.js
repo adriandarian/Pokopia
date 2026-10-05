@@ -10,7 +10,7 @@ export function roundTree(leaf = ['#5fbf45', '#7bd556', '#4aa83c'], seed = 1) {
   L.push(cyl(0.12, 0.2, 1.2, 6, BARK2, { y: 1.3, tiltZ: 0.18 }));
   L.push(cyl(0.09, 0.14, 0.9, 6, BARK2, { y: 1.1, x: 0.05, tiltZ: -0.7 }));
   const cs = [[0, 3.3, 0, 1.55], [0.95, 2.9, 0.3, 1.1], [-0.9, 2.95, -0.2, 1.15], [0.1, 4.1, 0.1, 1.05], [0.1, 2.9, -1.0, 1.1], [-0.6, 3.8, 0.7, 0.85]];
-  cs.forEach((c, i) => L.push(blob(c[0], c[1], c[2], c[3], leaf[i % leaf.length], { seed: i + seed, sy: 0.82, detail: i === 0 ? 2 : 1, lump: 0.17 })));
+  cs.forEach((c, i) => L.push(blob(c[0], c[1], c[2], c[3], leaf[i % leaf.length], { seed: i + seed, sy: 0.82, detail: 1, lump: 0.17 })));
   return merge(L);
 }
 export function pineTree(seed = 1) {
@@ -98,15 +98,27 @@ export function berryBush(seed = 3) {
   return merge(L);
 }
 export function rock(seed = 1) {
-  let g = new THREE.IcosahedronGeometry(1, 1);
+  let g = new THREE.IcosahedronGeometry(1, 2);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const k = 0.78 + 0.45 * Math.abs(Math.sin(x * 3.1 + seed) * Math.cos(z * 2.7 + seed * 2) + Math.sin(y * 4 + seed) * 0.3);
-    p.setXYZ(i, x * k, y * k * 0.72, z * k);
+    // soft, bevelled boulder: low-frequency lumps, flattened top and bottom
+    const k = 0.86 + 0.2 * (Math.sin(x * 2.3 + seed) * Math.cos(z * 2.1 + seed * 2) * 0.5 + 0.5) + 0.06 * Math.sin(y * 5 + x * 3 + seed);
+    p.setXYZ(i, x * k, Math.max(y, -0.35) * k * 0.7, z * k);
   }
-  g = prep(g, '#a39a92', 0, [0.65, 1.15], 0.07);
+  g = g.index ? g.toNonIndexed() : g; g.deleteAttribute('uv');
   g.computeVertexNormals();
+  const n = g.attributes.normal, pos = g.attributes.position, col = new Float32Array(pos.count * 3);
+  const base = new THREE.Color('#a8a097'), moss = new THREE.Color('#6f9a45'), c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const up = n.getY(i), y = pos.getY(i);
+    c.copy(base).multiplyScalar(0.8 + 0.3 * Math.min(1, Math.max(0, up * 0.5 + 0.6)));
+    c.lerp(moss, THREE.MathUtils.smoothstep(up, 0.35, 0.8) * 0.75);   // mossy cap
+    c.lerp(new THREE.Color('#6a8f48'), THREE.MathUtils.smoothstep(-y, 0.0, 0.4) * 0.55); // grass skirt at the base
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('aw', new THREE.BufferAttribute(new Float32Array(pos.count), 1));
   return g;
 }
 export function mushroom() {
@@ -175,4 +187,25 @@ export function standingStone() {
   for (let i = 0; i < p.count; i++) { const k = 0.85 + 0.3 * Math.abs(Math.sin(p.getX(i) * 5 + p.getY(i) * 2)); p.setXYZ(i, p.getX(i) * k, p.getY(i) + 1.1, p.getZ(i) * k); }
   g = prep(g, '#a8a095', 0, [0.6, 1.1], 0.05); g.computeVertexNormals();
   return g;
+}
+
+/** Cherry-blossom tree: curved trunk, branch forks and a cluster of small canopy puffs with scattered petals. */
+export function blossomTree(seed = 3) {
+  const r = mulberry(seed * 17 + 5), L = [];
+  const pinks = ['#ff9cc0', '#ffb5d1', '#f581ad', '#ffc4da'];
+  L.push(cyl(0.13, 0.3, 1.3, 7, '#6b4630'));
+  L.push(cyl(0.09, 0.14, 1.1, 6, '#7a5236', { y: 1.15, tiltZ: 0.35 }));
+  L.push(cyl(0.07, 0.11, 1.0, 6, '#7a5236', { y: 1.1, x: -0.05, tiltZ: -0.55 }));
+  L.push(cyl(0.06, 0.09, 0.8, 6, '#7a5236', { y: 1.2, tiltX: 0.5 }));
+  const puffs = [[0.5, 2.5, 0, 0.7], [-0.7, 2.3, 0.1, 0.65], [0, 2.9, 0.2, 0.75], [0.1, 2.4, 0.8, 0.6], [-0.3, 2.6, -0.8, 0.6], [0.9, 2.8, -0.5, 0.55], [-1.0, 2.8, -0.5, 0.5], [0.4, 3.3, -0.2, 0.55], [-0.5, 3.2, 0.4, 0.5], [1.0, 2.3, 0.7, 0.45]];
+  puffs.forEach((c, i) => L.push(blob(c[0], c[1], c[2], c[3], pinks[i % 4], { seed: i + seed, sy: 0.8, detail: 1, lump: 0.22, shade: [0.95, 1.12] })));
+  // loose petal flakes clinging to the canopy
+  for (let i = 0; i < 46; i++) {
+    const p = puffs[i % puffs.length], a = r() * 6.28, b = r() * 2.4 - 0.4, rr = p[3] * 1.02;
+    const x = p[0] + Math.cos(a) * Math.cos(b) * rr, y = p[1] + Math.sin(b) * rr * 0.8, z = p[2] + Math.sin(a) * Math.cos(b) * rr;
+    let g = new THREE.CircleGeometry(0.1 + r() * 0.05, 5); g.rotateY(-a + Math.PI / 2); g.rotateX(-b * 0.4);
+    g.translate(x, y, z);
+    L.push(prep(g, r() < 0.5 ? '#ffffff' : '#ffe6ef', 0.9, [1, 1], 0.02));
+  }
+  return merge(L);
 }

@@ -30,14 +30,14 @@ export function stepIdle(c, dt, t, fx, out) {
   const env = sm(0, 0.12, p) * (1 - sm(0.88, 1, p));   // blend in / out
   const top = c.top || 1.7;
   if (k === 'sleep') {
-    out.sy = 1 - 0.16 * env + Math.sin(t * 1.7) * 0.035 * env; out.rotX = 0.16 * env; out.rotZ = 0.16 * env * (c.m.id % 2 ? 1 : -1);
-    out.bounce = -0.04 * env; out.eye = 'sleep'; out.ear = 0.7 * env; out.tailCurl = env; out.armRaise = -0.3 * env;
+    out.sy = 1 - 0.3 * env + Math.sin(t * 1.7) * 0.05 * env; out.rotX = 0.42 * env; out.rotZ = 0.34 * env * (c.m.id % 2 ? 1 : -1);
+    out.bounce = -0.08 * env; out.eye = 'sleep'; out.ear = 0.7 * env; out.tailCurl = env; out.armRaise = -0.3 * env;
     id.z -= dt; if (id.z <= 0 && env > 0.8) { id.z = 1.2; const pos = c.m.position.clone(); pos.y += top * 0.9; pos.x += 0.3;
       fx.spawn({ text: 'z', color: '#cfe8ff', pos, vel: new THREE.Vector3(0.35, 0.8, 0), drag: 0.6, life: 1.9, s0: 0.2, s1: 0.65, aspect: 2, pop: 1, fade: 0.5 }); }
   } else if (k === 'dance') {
     const b = Math.sin(e * 7.5 + ph);
-    out.bounce = Math.abs(b) * 0.2 * env; out.sy = 1 + (Math.abs(b) < 0.25 ? -0.1 : 0.04) * env; out.rotZ = Math.sin(e * 3.75 + ph) * 0.22 * env; out.rotY = Math.sin(e * 3.75) * 0.5 * env;
-    out.armRaise = (0.7 + 0.3 * b) * env; out.armSwing = b * env; out.mouth = 0.5 * env; out.eye = 'happy'; out.ear = Math.sin(e * 7.5) * 0.4 * env;
+    out.bounce = Math.abs(b) * 0.5 * env; out.sy = 1 + (Math.abs(b) < 0.25 ? -0.2 : 0.1) * env; out.rotZ = Math.sin(e * 3.75 + ph) * 0.45 * env; out.rotY = Math.sin(e * 3.75) * 1.1 * env;
+    out.armRaise = (1.0 + 0.5 * b) * env; out.armSwing = b * env * 1.6; out.mouth = 0.6 * env; out.eye = 'happy'; out.ear = Math.sin(e * 7.5) * 0.4 * env;
     id.z -= dt; if (id.z <= 0) { id.z = 0.5; fx.twinkle(c.m.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, top * (0.7 + Math.random() * 0.5), (Math.random() - 0.5) * 1.2)), '#fff1a8'); }
   } else if (k === 'eat') {
     // lift berry to the mouth, 3 bites with chewing, berry shrinks
@@ -48,10 +48,10 @@ export function stepIdle(c, dt, t, fx, out) {
     if (bites > id.bites) { id.bites = bites; fx.twinkle(c.m.position.clone().add(new THREE.Vector3(0, top * 0.5, 0.4)), '#ff8fa8'); }
   } else if (k === 'stretch') {
     const s = Math.sin(Math.PI * Math.min(1, p * 1.05));
-    out.sy = 1 + 0.2 * s; out.armRaise = 1.25 * s; out.rotX = -0.2 * s; out.mouth = sm(0.3, 0.55, p) * (1 - sm(0.7, 0.95, p)); out.eye = s > 0.4 ? 'happy' : null; out.beak = out.mouth; out.ear = -0.3 * s;
-    out.bounce = 0.02 * s;
+    out.sy = 1 + 0.4 * s; out.armRaise = 2.0 * s; out.rotX = -0.4 * s; out.mouth = sm(0.3, 0.55, p) * (1 - sm(0.7, 0.95, p)); out.eye = s > 0.4 ? 'happy' : null; out.beak = out.mouth; out.ear = -0.3 * s;
+    out.bounce = 0.12 * s;
   } else if (k === 'look') {
-    const ang = Math.sin(e * 1.3 + ph) * 0.9 * env + Math.sin(e * 3.1) * 0.08;
+    const ang = Math.sin(e * 1.3 + ph) * 1.4 * env + Math.sin(e * 3.1) * 0.08;
     out.rotY = ang; out.rotZ = Math.sin(e * 1.3 + ph + 1.2) * 0.07 * env; out.ear = Math.sin(e * 6) * 0.25 * (Math.sin(e * 0.9) > 0.5 ? 1 : 0);
     out.rotX = -0.05 * env * Math.abs(Math.cos(e * 1.3 + ph));
   }

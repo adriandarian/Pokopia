@@ -15,7 +15,7 @@ export const BY_ID = Object.fromEntries(SPECIES.map(s => [s.id, s]));
 // Item colour identification (matches colours used in src/creatures.js Collectibles).
 export const BERRY_COLORS = { '#ff4d6d': 'red', '#9a6bff': 'purple' };
 export const GEM_COLORS = { '#ff6fb0': 'pink', '#6fd0ff': 'blue', '#ffe066': 'yellow', '#8cf0b0': 'green' };
-export const COLOR_ICON = { red: '🍓', purple: '🍇', pink: '💗', blue: '💙', yellow: '💛', green: '💚' };
+export const COLOR_ICON = { red: '🍓', purple: '🍇', pink: '💗', blue: '🔷', yellow: '⭐', green: '🍀' };
 export const COLOR_SWATCH = { red: '#ff4d6d', purple: '#9a6bff', pink: '#ff6fb0', blue: '#6fd0ff', yellow: '#ffe066', green: '#8cf0b0' };
 
 // slots: hat, shirt, hair, pack, sticker, trail.  `hero` = hat id understood by player.setOutfit; `value` = colour.
@@ -28,11 +28,11 @@ export const WARDROBE = [
   H('straw', 'Straw Hat', '👒', 50, { hero: 'straw' }),
   H('beanie', 'Cosy Beanie', '🧶', 80, { hero: 'beanie' }),
   H('flower', 'Flower Crown', '🌼', 120, { hero: 'flower' }),
-  H('party', 'Party Hat', '🎉', 150),
-  H('cat', 'Cat Ears', '🐱', 200),
-  H('wizard', 'Wizard Hat', '🧙', 350),
+  H('party', 'Party Hat', '🎉', 150, { hero: 'party' }),
+  H('cat', 'Cat Ears', '🐱', 200, { hero: 'cat' }),
+  H('wizard', 'Wizard Hat', '🧙', 350, { hero: 'wizard' }),
   H('crown', 'Little Crown', '👑', 450, { hero: 'crown' }),
-  H('halo', 'Golden Halo', '😇', 0, { gift: 'm_journal' }),
+  H('halo', 'Golden Halo', '😇', 0, { gift: 'm_journal', hero: 'halo' }),
   // shirt colours
   { id: 'col_red', slot: 'shirt', name: 'Cherry', icon: '🍒', price: 0, value: '#ff7a7a' },
   C('shirt', 'mint', 'Mint', '🌿', 40, '#5fd9a8'), C('shirt', 'sky', 'Sky', '☁️', 40, '#5db8ff'),
@@ -102,6 +102,11 @@ export const QUEST_POOL = [
   { id: 'explore8', group: 'explore', ev: 'explore', goal: 8, icon: '🗺️', title: 'Island Hopper', desc: 'Visit 8 new corners of the island', reward: 32 },
   { id: 'wear', group: 'wear', ev: 'equip', match: e => e.slot === 'hat' && e.id !== 'hat_none', goal: 1, icon: '🎩', title: 'Dress Up', desc: 'Put on a hat', reward: 8 },
   { id: 'emote', group: 'emote', ev: 'emote', goal: 2, icon: '💃', title: 'Show Off', desc: 'Do 2 emotes', reward: 8 },
+  { id: 'decor2', group: 'decor', ev: 'place', goal: 2, icon: '🏡', title: 'Home Sweet Home', desc: 'Place 2 decorations on your island', reward: 22 },
+  { id: 'decorbuy', group: 'decorbuy', ev: 'decorbuy', goal: 1, icon: '🛍️', title: 'Window Shopping', desc: 'Buy a decoration', reward: 12 },
+  { id: 'wish1', group: 'wish', ev: 'wish', goal: 1, icon: '🌟', title: 'Wish Granter', desc: 'Grant a friend’s wish', reward: 30 },
+  { id: 'level2', group: 'level', ev: 'levelup', goal: 1, icon: '💞', title: 'Growing Closer', desc: 'Deepen a friendship level', reward: 30 },
+  { id: 'ev_firefly', group: 'event', ev: 'emote', match: e => e.name === 'dance', goal: 1, icon: '✨', title: 'Firefly Dance', desc: 'Dance under the fireflies', reward: 40 },
   ...bf, ...col,
 ];
 
