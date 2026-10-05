@@ -6,16 +6,24 @@ const WATER_Y = -0.4;
 const DAY_LENGTH = 360; // seconds per full day
 const C = (h) => new THREE.Color(h);
 
-// Palette keyframes keyed by sun elevation (sin of angle).
+// Palette keyframes keyed by sun elevation. Hexes are sRGB (converted to linear by THREE.Color) so night/dusk
+// values are deliberately bright: lit surfaces still multiply by low albedo.
 const KEYS = [
-  { e: -0.30, zen: C('#050818'), hor: C('#10183a'), sun: C('#6a7bd0'), fog: C('#10183a'), amb: 1.0, hemiSky: C('#4a60b8'), hemiGnd: C('#1c2a3a'), exp: 1.45, tint: C('#c4d0ff') },
-  { e: -0.08, zen: C('#1b2358'), hor: C('#c05a78'), sun: C('#ff7a4a'), fog: C('#8a5a8a'), amb: 0.8, hemiSky: C('#8a6aa8'), hemiGnd: C('#3a3038'), exp: 1.15, tint: C('#ffc8d8') },
-  { e: 0.04,  zen: C('#4a62b8'), hor: C('#ff9a60'), sun: C('#ff9a50'), fog: C('#f0a880'), amb: 1.25, hemiSky: C('#ffc0a0'), hemiGnd: C('#8a6a50'), exp: 1.15, tint: C('#ffd2b0') },
-  { e: 0.20,  zen: C('#3f84e0'), hor: C('#ffd9a8'), sun: C('#ffd59a'), fog: C('#ffdcb8'), amb: 1.2, hemiSky: C('#ffe3c0'), hemiGnd: C('#7a9a5a'), exp: 1.05, tint: C('#fff0dc') },
-  { e: 0.55,  zen: C('#2f8cf0'), hor: C('#bfe6ff'), sun: C('#fff3da'), fog: C('#c4e8ff'), amb: 1.1, hemiSky: C('#cfeaff'), hemiGnd: C('#7a9a5a'), exp: 1.0, tint: C('#ffffff') },
-  { e: 1.0,   zen: C('#2a86f0'), hor: C('#bfe6ff'), sun: C('#fff6e4'), fog: C('#c4e8ff'), amb: 1.1, hemiSky: C('#cfeaff'), hemiGnd: C('#7a9a5a'), exp: 1.0, tint: C('#ffffff') },
+  { e: -0.45, zen: C('#0a1238'), hor: C('#1d3470'), sun: C('#9ab4ff'), fog: C('#1d3470'), amb: 1.6, hemiSky: C('#7894ee'), hemiGnd: C('#34466e'), exp: 1.7, tint: C('#cfdcff'), fill: 0.7 },
+  { e: -0.15, zen: C('#26337e'), hor: C('#c8628e'), sun: C('#ff8a60'), fog: C('#8a5a98'), amb: 1.5, hemiSky: C('#b498e0'), hemiGnd: C('#5c4c6c'), exp: 1.45, tint: C('#ffd2e4'), fill: 0.55 },
+  { e: -0.02, zen: C('#3a54b0'), hor: C('#ff8446'), sun: C('#ff8a4a'), fog: C('#e8906c'), amb: 1.45, hemiSky: C('#ffb08c'), hemiGnd: C('#906a5c'), exp: 1.3, tint: C('#ffd0b0'), fill: 0.4 },
+  { e: 0.12,  zen: C('#3f78d8'), hor: C('#ffc080'), sun: C('#ffb870'), fog: C('#f6c090'), amb: 1.3, hemiSky: C('#ffd8b0'), hemiGnd: C('#86905a'), exp: 1.12, tint: C('#ffe6c8'), fill: 0.3 },
+  { e: 0.35,  zen: C('#3584ea'), hor: C('#a8d2fa'), sun: C('#ffe9c0'), fog: C('#b4d8f8'), amb: 1.1, hemiSky: C('#bfe0ff'), hemiGnd: C('#7a9a5a'), exp: 1.0, tint: C('#fff6ea'), fill: 0.25 },
+  { e: 1.0,   zen: C('#1e78ec'), hor: C('#94c8f8'), sun: C('#fff0d4'), fog: C('#a6d2f8'), amb: 1.05, hemiSky: C('#bcdcff'), hemiGnd: C('#7a9a5a'), exp: 1.0, tint: C('#fff8f0'), fill: 0.25 },
 ];
-const SUNI = [0, 0.8, 2.4, 2.8, 2.8, 2.8]; // sun light intensity per key
+const SUNI = [0, 0.6, 2.2, 2.8, 3.0, 3.0]; // sun light intensity per key
+// Sunrise 5.2h, sunset 19.2h; longer, slower night arc so dusk/golden hour sits around 18-19.5h.
+function sunAngle(h) {
+  const SR = 5.2, SS = 19.2;
+  if (h >= SR && h <= SS) return (h - SR) / (SS - SR) * Math.PI;
+  const n = h >= SS ? h - SS : h + 24 - SS;
+  return Math.PI + n / 10 * Math.PI;
+}
 
 function sampleKeys(e, out) {
   let i = 0;
@@ -25,23 +33,24 @@ function sampleKeys(e, out) {
   for (const k of ['zen', 'hor', 'sun', 'fog', 'hemiSky', 'hemiGnd', 'tint']) out[k].copy(a[k]).lerp(b[k], s);
   out.amb = THREE.MathUtils.lerp(a.amb, b.amb, s);
   out.exp = THREE.MathUtils.lerp(a.exp, b.exp, s);
+  out.fill = THREE.MathUtils.lerp(a.fill, b.fill, s);
   out.sunI = THREE.MathUtils.lerp(SUNI[i], SUNI[i + 1], s);
   return out;
 }
 
-function puffTexture(seed) {
+// Lumpy cauliflower alpha blob (shading is done per-puff in the cloud shader from sun direction).
+function puffTexture() {
   const cv = document.createElement('canvas'); cv.width = cv.height = 128;
   const g = cv.getContext('2d');
-  // soft lit blob: bright top, bluish-grey shaded base
-  const grd = g.createRadialGradient(64, 50, 4, 64, 64, 62);
-  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.45, 'rgba(255,255,255,.85)');
-  grd.addColorStop(0.75, 'rgba(235,242,255,.35)'); grd.addColorStop(1, 'rgba(225,235,255,0)');
-  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
-  g.globalCompositeOperation = 'source-atop';
-  const sh = g.createLinearGradient(0, 30, 0, 118);
-  sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(150,170,205,.75)');
-  g.fillStyle = sh; g.fillRect(0, 0, 128, 128);
-  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  const r = (() => { let q = 11; return () => (q = (q * 16807) % 2147483647) / 2147483647; })();
+  const blob = (x, y, rad, a) => {
+    const grd = g.createRadialGradient(x, y, rad * 0.15, x, y, rad);
+    grd.addColorStop(0, `rgba(255,255,255,${a})`); grd.addColorStop(0.6, `rgba(255,255,255,${a * 0.75})`); grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill();
+  };
+  blob(64, 64, 46, 1);
+  for (let i = 0; i < 9; i++) { const a = r() * 6.283, d = 18 + r() * 14; blob(64 + Math.cos(a) * d, 64 + Math.sin(a) * d, 16 + r() * 10, 0.95); }
+  const t = new THREE.CanvasTexture(cv); return t;
 }
 
 // Depth lookup texture of the sea floor, so the water shader can colour by depth and draw shoreline foam.

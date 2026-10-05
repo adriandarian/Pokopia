@@ -26,7 +26,7 @@ const player = new Player(scene, camera, renderer.domElement);
 const creatures = new Creatures(scene);
 let score = 0;
 const scoreEl = document.getElementById('score');
-const collect = new Collectibles(scene, () => { score++; scoreEl.textContent = `🌸 ${score}`; });
+const collect = new Collectibles(scene, () => { score++; scoreEl.textContent = `🌸 ${score}`; emit('collect', { kind: 'gem', amount: 1 }); });
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();

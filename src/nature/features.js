@@ -3,6 +3,37 @@ import * as THREE from 'three';
 import { fbm } from '../noise.js';
 
 export const POND = { x: -30, z: 14, r: 6.5 };
+const sst = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+/** Island design: open meadows, dense groves, landmark trees, a hilltop viewpoint. */
+export const SUMMIT = { x: 0, z: 0, h: 12.4 };
+export const MEADOWS = [
+  { x: -29, z: 16, r: 19 },   // pond meadow
+  { x: 27, z: -6, r: 13 },    // east meadow by the beach path
+  { x: -4, z: -27, r: 11 },   // north clearing
+  { x: -8, z: 36, r: 15 },    // south flower field
+  { x: 34, z: 30, r: 11 },    // south-east glade
+];
+export const GROVES = [
+  { x: -24, z: -22, r: 17 }, { x: 20, z: -30, r: 14 }, { x: 40, z: 14, r: 12 },
+  { x: -46, z: -6, r: 11 }, { x: 14, z: 14, r: 11 }, { x: -10, z: 18, r: 9 }, { x: 12, z: -14, r: 8 },
+];
+export const LANDMARKS = [
+  { kind: 'oak', x: 24, z: -10, s: 2.1 }, { kind: 'blossom', x: -4, z: 35, s: 1.9 },
+  { kind: 'pine', x: -9, z: -25, s: 2.1 }, { kind: 'oak', x: -41, z: 21, s: 1.9 },
+  { kind: 'blossom', x: 5, z: 6, s: 1.5 }, { kind: 'oak', x: 36, z: 31, s: 1.8 },
+];
+const wobble = (x, z) => (fbm(x * 0.07 + 40, z * 0.07 - 12, 2, 17) - 0.5) * 7;
+export function meadowMask(x, z) {
+  let m = 0;
+  for (const c of MEADOWS) m = Math.max(m, sst(c.r, c.r * 0.55, Math.hypot(x - c.x, z - c.z) + wobble(x, z)));
+  return Math.max(m, sst(11, 6, Math.hypot(x - SUMMIT.x, z - SUMMIT.z)));
+}
+export function groveMask(x, z) {
+  let m = 0;
+  for (const c of GROVES) m = Math.max(m, sst(c.r, c.r * 0.45, Math.hypot(x - c.x, z - c.z) + wobble(x + 9, z - 4)));
+  return m;
+}
 
 // Path polylines (control points) -> sampled catmull curves
 const ROUTES = [
