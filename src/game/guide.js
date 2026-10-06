@@ -11,7 +11,7 @@ let objEl, arrowEl, api;
 const STEPS = [
   { text: 'Collect your first gem!', sub: 'Walk into a sparkly gem. Gems turn into petals 🌸', target: 'gem' },
   { text: 'You earned petals 🌸!', sub: 'Spend them in the wardrobe 👒. Now find a creature and say hi!', target: 'creature' },
-  { text: 'Make a friend!', sub: 'Pick a berry 🍓, then press E (or tap Give) next to a creature. Its favourite colour makes friends instantly!', target: 'berry' },
+  { text: 'Make a friend!', sub: 'Pick up berries 🍓, then press E (or tap Give) next to a creature. Favourites help most. Friendship grows over a few gifts, hellos and emotes.', target: 'berry' },
 ];
 export function startGuide(a) {
   api = a;
@@ -31,7 +31,7 @@ function advance(n) {
   if (n === 1) emit('toast', { icon: '🌸', text: 'Petals are your treasure! Spend them in the wardrobe.', kind: 'good' });
   paintObjective();
 }
-let nextIdx = 0;
+let nextIdx = 0, hideT = 0;
 function suggestions() {
   const L = [], n = k => Object.entries(state.inv).filter(([x]) => x.startsWith(k + ':')).reduce((a, [, v]) => a + v, 0);
   if (state.quests?.some(q => q.done && !q.claimed)) L.push(['⭐ Quest reward ready!', 'Open the quest list and claim your petals.']);
@@ -50,12 +50,19 @@ function paintObjective() {
   const s = STEPS[state.tutorial];
   if (!s) {
     const L = suggestions(), [t, sub] = L[nextIdx++ % L.length];
-    objEl.innerHTML = `<b>${t}</b><small>${sub}</small>`; objEl.classList.remove('hidden'); objEl.classList.add('next'); arrowEl.classList.add('hidden'); return;
+    objEl.innerHTML = `<b>${t}</b><small>${sub}</small>`; objEl.classList.remove('hidden'); objEl.classList.add('next'); arrowEl.classList.add('hidden'); clearTimeout(hideT); hideT = setTimeout(() => { if (!STEPS[state.tutorial]) objEl.classList.add('hidden'); }, 6000); return;
   }
   objEl.classList.remove('next');
   objEl.innerHTML = `<b>🎯 ${s.text}</b><small>${s.sub}</small>`; objEl.classList.remove('hidden');
 }
 setInterval(() => { if (document.body.classList.contains('playing') && !STEPS[state.tutorial]) paintObjective(); }, 20000);
+function dot(id, on) { const b = document.getElementById(id); if (b) b.classList.toggle('dotted', !!on); }
+setInterval(() => {
+  if (!document.body.classList.contains('playing')) return;
+  dot('b-decor', Object.values(state.decorInv || {}).some(n => n > 0));
+  dot('b-journal', !!activeWishText());
+  dot('b-shop', WARDROBE.some(x => !state.owned.includes(x.id) && !x.gift && x.price > 0 && x.price <= state.petals));
+}, 2500);
 
 function nearest(list, pos, pred) {
   let best = null, bd = 1e9;
@@ -81,6 +88,7 @@ export function updateGuide() {
     const dx = x - cx, dy = y - cy, k = Math.min((W / 2 - m) / Math.abs(dx || 1e-3), (H / 2 - 130) / Math.abs(dy || 1e-3));
     x = cx + dx * k; y = cy + dy * k; ang = Math.atan2(dy, dx) * 180 / Math.PI + 90;
   }
+  if (W > 700 && x < 310 && y < 380) x = 320; // keep clear of the left HUD stack
   arrowEl.classList.remove('hidden'); arrowEl.classList.toggle('onscreen', onscreen);
   arrowEl.style.transform = `translate(${x}px,${y}px)`;
   arrowEl.firstChild.style.transform = `rotate(${ang}deg)`;

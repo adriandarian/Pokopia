@@ -35,6 +35,7 @@ const B = {
 };
 function plush(sp) { const c = PLUSH_COLORS[sp]; return { solid: [sph(0.42, 0, 0.42, 0, c, [1, 0.9, 1]), sph(0.3, 0, 0.95, 0, c), sph(0.11, -0.2, 1.2, 0, c, [1, 1.5, 0.7]), sph(0.11, 0.2, 1.2, 0, c, [1, 1.5, 0.7]), sph(0.045, -0.1, 0.98, 0.27, '#2a1d2e'), sph(0.045, 0.1, 0.98, 0.27, '#2a1d2e'), sph(0.07, 0, 0.9, 0.29, '#ffd1dc', [1, 0.6, 0.5]), sph(0.1, 0, 0.5, -0.4, '#ffffff')] }; }
 
+const SCALE = { d_house: 1.6, d_windmill: 1.6, d_lantern: 1.5, d_well: 1.3, d_arch: 1.3, d_sapling: 1.3, d_mushlamp: 1.4, d_bridge: 1.25, d_flowerbed: 1.2, d_bench: 1.2, d_sign: 1.25 };
 const vcMat = () => toon('#ffffff', { vc: true, rimTint: true });
 const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
 const templates = new Map();
@@ -49,6 +50,7 @@ function makeMesh(id, ghost = false) {
   const m = new THREE.Mesh(t.solid, ghost ? new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.65, depthWrite: false }) : vcMat());
   m.castShadow = !ghost; if (!ghost) outline(m, 0.018, '#3b2a3a'); g.add(m);
   if (t.glow) g.add(new THREE.Mesh(t.glow, glowMat));
+  g.scale.setScalar(SCALE[id] || 1.15);
   if (t.spin) { const s = new THREE.Group(); s.position.set(...t.spin.origin); const sm = new THREE.Mesh(t.spin.geo, ghost ? m.material : vcMat()); s.add(sm); g.add(s); g.userData.spin = s; }
   return g;
 }
@@ -92,7 +94,7 @@ export function startPlacing(id, movingIndex = null) {
   if (mode) cancelPlacing(true);
   mode = { id, rot: movingIndex != null ? state.decor[movingIndex].r : 0, moving: movingIndex };
   ghost = makeMesh(id, true); scene.add(ghost); ring.visible = true;
-  if (movingIndex != null) { const p = placed[movingIndex]; p.m.visible = false; }
+  if (movingIndex != null) { const p = placed[movingIndex]; p.m.visible = false; fx.burst(p.m.position.clone().setY(p.m.position.y + 0.8), '#fff6a8', 12); }
   emit('placing', { on: true, id, moving: movingIndex != null });
 }
 export function rotatePlacing() { if (mode) { mode.rot = (mode.rot + 1) % 8; emit('sfx', { name: 'click' }); } }
@@ -113,6 +115,7 @@ export function confirmPlacing() {
     if (!(state.decorInv[id] > 0)) { endMode(); return false; }
     state.decorInv[id]--; const d = { id, x, z, r: mode.rot }; state.decor.push(d); spawn(d);
     emit('place', { id }); emit('inventory');
+    state.placedTypes = state.placedTypes || {}; if (!state.placedTypes[id]) { state.placedTypes[id] = 1; addPetals(5); emit('toast', { icon: '✨', text: `First ${DECOR_BY_ID[id].name} placed! +5 🌸`, kind: 'win' }); }
   }
   fx.burst(new THREE.Vector3(x, heightAt(x, z) + 0.5, z), '#fff6a8', 14); fx.hearts(new THREE.Vector3(x, heightAt(x, z) + 1, z), 2);
   emit('sfx', { name: 'place' }); saveSoon(); checkCharm();
@@ -136,6 +139,11 @@ export function buyDecor(id) {
   const d = DECOR_BY_ID[id]; if (!d || d.gift) return false;
   if (state.petals < d.price) return false;
   addPetals(-d.price); state.decorInv[id] = (state.decorInv[id] || 0) + 1; emit('purchase', { id, price: d.price, decor: true }); emit('decorbuy', { id }); emit('inventory'); saveSoon(); return true;
+}
+export function storeIndex(i) {
+  if (i < 0 || i >= state.decor.length) return;
+  const d = state.decor[i]; fx.burst(placed[i].m.position.clone().setY(placed[i].m.position.y + 0.8), '#fff6a8', 12); scene.remove(placed[i].m); placed.splice(i, 1); state.decor.splice(i, 1);
+  state.decorInv[d.id] = (state.decorInv[d.id] || 0) + 1; emit('inventory'); saveSoon(); checkCharm(true);
 }
 export function giveDecor(id) { state.decorInv[id] = (state.decorInv[id] || 0) + 1; emit('inventory'); saveSoon(); }
 function checkCharm(silent) {

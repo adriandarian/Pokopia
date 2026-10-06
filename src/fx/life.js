@@ -50,10 +50,17 @@ export function buildAmbientLife(scene, state) {
 
   // --- petals ---
   const PN = 100;
-  const pg = new THREE.PlaneGeometry(0.28, 0.2);
-  const pm = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, fog: true, transparent: true, opacity: 0.95 });
+  const pg = new THREE.PlaneGeometry(0.16, 0.16);
+  const petalTex = (() => { // soft rounded teardrop petal with a faint centre vein
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d');
+    g.translate(32, 32); g.beginPath(); g.moveTo(0, 26); g.bezierCurveTo(26, 14, 24, -22, 0, -26); g.bezierCurveTo(-24, -22, -26, 14, 0, 26); g.closePath();
+    const gr = g.createRadialGradient(0, 8, 2, 0, 0, 30); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(235,235,235,.9)');
+    g.fillStyle = gr; g.fill(); g.strokeStyle = 'rgba(190,150,160,.5)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, 24); g.lineTo(0, -12); g.stroke();
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const pm = new THREE.MeshBasicMaterial({ map: petalTex, side: THREE.DoubleSide, fog: true, transparent: true, alphaTest: 0.08, depthWrite: false });
   const petals = new THREE.InstancedMesh(pg, pm, PN);
-  const pcols = ['#ffb7d0', '#ffd1e2', '#ffffff', '#ffc6a8', '#8fd45a', '#c8e060', '#f0a040', '#6cc060'];
+  const pcols = ['#ffa8c8', '#ffb7d0', '#ff9fb8', '#ffc6a8', '#ffb090', '#f2a050', '#ff8fb0', '#ffc0a0'];
   const pst = [];
   for (let i = 0; i < PN; i++) {
     petals.setColorAt(i, new THREE.Color(pcols[i % 8]));
@@ -156,6 +163,7 @@ export function buildAmbientLife(scene, state) {
       motes.material.uniforms.night.value = night;
       motes.material.uniforms.col.value.copy(state.sun).lerp(new THREE.Color('#fff'), 0.4);
       motes.material.uniforms.scale.value = innerHeight * 0.9;
+      const camPos = window.__game?.camera?.position || pv;
       const dayK = 1 - night;
       rays.material.uniforms.time.value = t; rays.material.uniforms.col.value.copy(state.sun).lerp(new THREE.Color('#fff'), 0.3);
       rays.material.uniforms.k.value = 0.14 * dayK * THREE.MathUtils.smoothstep(state.e, 0.0, 0.25) * (1.0 - 0.5 * THREE.MathUtils.smoothstep(state.e, 0.5, 0.9));
@@ -170,8 +178,10 @@ export function buildAmbientLife(scene, state) {
         p.z += Math.cos(t * p.sp * 0.8 + p.ph) * dt * 0.8;
         const ground = Math.max(heightAt(p.x, p.z), 0) + 0.05;
         if (p.y < ground) respawn(p, false);
-        e.set(t * p.rs + p.ph, t * p.rs * 0.7, Math.sin(t * p.sp + p.ph));
+        e.set(t * p.rs + p.ph, t * p.rs * 0.7 + Math.sin(t * 3 + p.ph) * 0.4, Math.sin(t * p.sp + p.ph));
         q.setFromEuler(e); pv.set(p.x, p.y, p.z);
+        const cd = pv.distanceTo(camPos), k = THREE.MathUtils.smoothstep(cd, 2.5, 6);
+        sc.setScalar(Math.max(k, 1e-4));
         petals.setMatrixAt(i, m4.compose(pv, q, sc));
       }
       petals.instanceMatrix.needsUpdate = true;
@@ -184,6 +194,7 @@ export function buildAmbientLife(scene, state) {
         const y = Math.max(heightAt(x, z), 0) + f.hh + Math.sin(a * 3.1) * 0.5;
         const dx = x - f.grp.position.x, dz = z - f.grp.position.z;
         f.grp.position.set(x, y, z);
+        f.grp.scale.setScalar(2.3 * THREE.MathUtils.smoothstep(f.grp.position.distanceTo(camPos), 1.5, 4.5) + 1e-3);
         if (dx * dx + dz * dz > 1e-8) f.grp.rotation.y = Math.atan2(dx, dz) - Math.PI / 2 + Math.PI / 2;
         const fl = Math.sin(t * f.fl + f.ph) * 0.9 + 0.35;
         f.wl.rotation.z = fl; f.wr.rotation.z = -fl;

@@ -64,9 +64,9 @@ export function buildPond(scene) {
         float spec = pow(max(dot(N,H),0.), 140.) * 1.4;
         col += spec;
         col += smoothstep(.97,1.,vn(p*7.+t*.6)*vn(p*5.-t*.5)*1.9)*.12;
-        float edge = smoothstep(.0,.05,depth+.012);
-        float foam = (1.-smoothstep(.0,.12,depth)) * (.5+.5*sin(t*.8+vn(p*4.)*6.));
-        col = mix(col, vec3(1.), foam*.18);
+        float edge = smoothstep(.0,.09,depth+.02);
+        float foam = (1.-smoothstep(.0,.2,depth)) * smoothstep(-.03,.03,depth) * (.65+.35*sin(t*.8+vn(p*4.)*6.));
+        col = mix(col, vec3(1.), foam*.5);
         float rim = 1. - smoothstep(.93,.99, length(uv-.5)*2.);
         float a = mix(.62, .97, smoothstep(.0,.45,depth)) * rim * edge + fres*.1*rim;
         gl_FragColor = vec4(col, clamp(a,0.,1.));

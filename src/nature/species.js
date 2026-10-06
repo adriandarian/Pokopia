@@ -132,18 +132,27 @@ export function mushroom() {
   }
   return merge(L);
 }
-export function flower(petal, center = '#ffd23f') {
-  const L = [cyl(0.012, 0.016, 0.38, 4, '#4f9f3f', { aw: 0.2, shade: [0.8, 1.1] })];
-  const lf = new THREE.CircleGeometry(0.07, 4); lf.scale(1.6, 1, 0.5); lf.rotateX(-Math.PI / 2 + 0.3); lf.translate(0.07, 0.12, 0);
+const octa = (sx, sy, sz) => { const g = new THREE.OctahedronGeometry(1, 0); g.scale(sx, sy, sz); return g; };
+/** 3D flowers: daisy (radial tilted petals around a domed centre) or tulip (closed cup of petals). */
+export function flower(petal, center = '#ffd23f', tulip = false) {
+  const L = [cyl(0.014, 0.018, 0.34, 4, '#4f9f3f', { aw: 0.2, shade: [0.8, 1.1] })];
+  const lf = octa(0.1, 0.012, 0.035); lf.rotateZ(0.5); lf.translate(0.08, 0.1, 0);
   L.push(prep(lf, '#5cb04a', 0.2, [1, 1], 0));
-  const np = 5;
-  for (let i = 0; i < np; i++) {
-    const a = (i / np) * Math.PI * 2;
-    const pg = new THREE.CircleGeometry(0.085, 4); pg.scale(1.15, 1, 1); pg.rotateX(-Math.PI / 2 + 0.35); pg.translate(0.085, 0, 0); pg.rotateY(a); pg.translate(0, 0.38, 0);
-    L.push(prep(pg, petal, 1, [0.9, 1.1], 0.03));
+  if (tulip) {
+    for (let i = 0; i < 4; i++) {
+      const a = i / 4 * Math.PI * 2, g = octa(0.045, 0.1, 0.03);
+      g.translate(0.045, 0.1, 0); g.rotateZ(-0.12); g.rotateY(a); g.translate(0, 0.34, 0);
+      L.push(prep(g, petal, 1, [0.85, 1.15], 0.03));
+    }
+  } else {
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2, g = octa(0.075, 0.016, 0.03);
+      g.translate(0.085, 0, 0); g.rotateZ(0.4); g.rotateY(a); g.translate(0, 0.36, 0);
+      L.push(prep(g, petal, 1, [0.9, 1.1], 0.03));
+    }
+    const cg = octa(0.04, 0.035, 0.04); cg.translate(0, 0.375, 0);
+    L.push(prep(cg, center, 1, [1, 1], 0));
   }
-  const cg = new THREE.CircleGeometry(0.05, 5); cg.rotateX(-Math.PI / 2 + 0.1); cg.translate(0, 0.395, 0);
-  L.push(prep(cg, center, 1, [1, 1], 0));
   return merge(L);
 }
 export function reed() {

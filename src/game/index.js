@@ -43,7 +43,15 @@ export function initGame(api) {
   }
   on('rel', checkMilestones); on('levelup', checkMilestones);
   // Core bookkeeping subscribes first so later handlers see normalised payloads.
-  on('collect', e => { state.totalGems += e.amount ?? 1; addPetals(e.amount ?? 1); checkMilestones(); });
+  // Gentle daily soft cap on petals from picking things up: never a wall (floor 25%), and gifts/wishes/quests are unaffected.
+  let carry = 0;
+  const gemPay = (n) => {
+    const d = state.daily; d.gemPetals = d.gemPetals || 0;
+    const mult = d.gemPetals < 150 ? 1 : Math.max(0.25, 1 - (d.gemPetals - 150) / 400);
+    if (d.gemPetals < 150 && d.gemPetals + n >= 150) emit('toast', { icon: '🌙', text: 'Petals from gems are resting a little. Gifts, wishes and quests still count!', kind: 'info' });
+    d.gemPetals += n; carry += n * mult; const pay = Math.floor(carry); carry -= pay; if (pay > 0) addPetals(pay);
+  };
+  on('collect', e => { state.totalGems += e.amount ?? 1; gemPay(e.amount ?? 1); checkMilestones(); });
   on('discover', e => { if (state.discovered[e.species]) { e.repeat = true; return; } state.discovered[e.species] = Date.now(); saveSoon(); checkMilestones(); });
   on('befriend', e => {
     if (state.befriended[e.species]) { e.repeat = true; return; }
@@ -78,24 +86,28 @@ export function initGame(api) {
     else if (ev === 'berry') extra += 2;
     const now = performance.now(); combo = now - lastPick < 2000 ? combo + 1 : 1; lastPick = now;
     if (COMBO_BONUS[combo]) { extra += COMBO_BONUS[combo]; emit('toast', { icon: '🔥', text: `Collecting streak x${combo}! +${COMBO_BONUS[combo]} 🌸`, kind: 'win' }); }
-    if (extra) addPetals(extra);
+    if (extra) gemPay(extra);
     saveSoon(); emit('pickup', { kind: k, colorName }); emit('inventory');
   };
 
   // ---- gifts ----
   const favKeys = sp => [`berry:${sp.fav.berry}`, `gem:${sp.fav.gem}`];
+  let selGift = null;
+  const giftKinds = () => Object.keys(state.inv).filter(k => state.inv[k] > 0 && (k.startsWith('berry:') || k.startsWith('gem:'))).sort();
   function pickGift(sp) {
     const has = k => (state.inv[k] || 0) > 0;
+    if (selGift && has(selGift)) return { key: selGift, loved: favKeys(sp).includes(selGift) };
     const loved = favKeys(sp).find(has); if (loved) return { key: loved, loved: true };
     const any = (kind) => Object.keys(state.inv).filter(k => k.startsWith(kind + ':') && has(k)).sort((a, b) => state.inv[b] - state.inv[a])[0];
     const k = any('berry') || any('gem'); return k ? { key: k, loved: false } : null;
   }
   const favText = sp => `${COLOR_ICON[sp.fav.berry]} ${NAMES[sp.fav.berry]} or ${COLOR_ICON[sp.fav.gem]} ${NAMES[sp.fav.gem]}`;
-  let target = null, decorTarget = -1;
+  let target = null, decorTarget = -1, decorDist = 99, targetDist = 99;
   function interact() {
     if (document.getElementById('overlay')) return;
     if (isPlacing()) { confirmPlacing(); return; }
-    if (!target) { if (decorTarget >= 0) moveDecor(decorTarget); return; }
+    if (decorTarget >= 0 && (!target || decorDist <= targetDist)) { moveDecor(decorTarget); return; }
+    if (!target) return;
     const c = target, name = speciesOf(c), sp = BY_ID[name]; if (!sp || (c._gt || 0) > performance.now()) return;
     const g = pickGift(sp);
     if (!g) { emit('toast', { icon: '🍓', text: 'You have nothing to give yet. Pick up berries 🍓 or gems 💎 first!', kind: 'info' }); return; }
@@ -116,6 +128,8 @@ export function initGame(api) {
     else if (e.code === 'KeyX' || e.code === 'Backspace') storeMoving();
   });
   on('ui:interact', interact);
+  on('ui:giftkey', e => { selGift = selGift === e.key ? null : e.key; });
+  addEventListener('keydown', e => { if (e.code === 'KeyG' && !e.repeat) { const ks = giftKinds(); if (ks.length) selGift = ks[(ks.indexOf(selGift) + 1) % ks.length]; } });
   window.__gift = interact;
 
   // ---- per-frame watch ----
@@ -155,18 +169,19 @@ export function initGame(api) {
       }
       if (d < 4.8 && d < bd) { bd = d; best = c; }
     }
-    target = best; decorTarget = !best && started && !isPlacing() ? nearestDecor(pp, 2.2) : -1;
+    target = best; targetDist = bd; decorTarget = started && !isPlacing() ? nearestDecor(pp, 2.2) : -1;
+    decorDist = decorTarget >= 0 ? Math.hypot(state.decor[decorTarget].x - pp.x, state.decor[decorTarget].z - pp.z) : 99;
     if (isPlacing() || !started) { setPrompt(null); return; }
+    if (decorTarget >= 0 && decorDist <= bd) { setPrompt(`🔄 Move ${DECOR_BY_ID[state.decor[decorTarget].id].name}`, 'Pick it up to move or store it', true); return; }
     if (!best) {
       if (decorTarget >= 0) setPrompt(`🔄 Move ${DECOR_BY_ID[state.decor[decorTarget].id].name}`, 'Pick it up and place it somewhere else', true); else setPrompt(null);
       return;
     }
     const name = speciesOf(best), sp = BY_ID[name], g = sp && pickGift(sp), lv = lvlOf(name), tag = `${name} · ${LEVEL_NAME[lv]}`;
-    if (g) setPrompt(`${best.friend ? 'Give' : 'Gift'} ${COLOR_ICON[g.key.split(':')[1]]} to ${name}`, `${tag} · loves ${favText(sp)}${g.loved ? ' · perfect pick!' : ''}`, true);
+    if (g) { const kinds = giftKinds(); setPrompt(`${best.friend ? 'Give' : 'Gift'} ${COLOR_ICON[g.key.split(':')[1]]} to ${name}`, `${tag} · loves ${favText(sp)}${g.loved ? ' · perfect pick!' : ''}`, true, kinds.length > 1 ? kinds.map(k => ({ key: k, icon: COLOR_ICON[k.split(':')[1]], n: state.inv[k], sel: k === g.key, fav: sp && favKeys(sp).includes(k) })) : null); }
     else if (!best.friend) setPrompt(`${name} is getting to know you...`, `Gifts, emotes and daily hellos build friendship. Loves ${favText(sp)}`, false);
     else setPrompt(null);
   };
   { let last = performance.now(); const loop = (n) => { window.__gameTick(Math.min(0.1, (n - last) / 1000)); last = n; requestAnimationFrame(loop); }; requestAnimationFrame(loop); }
-  window.__dbg = () => ({ started, cells: cells.size, target: target && speciesOf(target) });
   window.__emit = emit; window.__gameState = state; window.__save = save;
 }

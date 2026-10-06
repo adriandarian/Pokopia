@@ -15,7 +15,7 @@ export class Player {
     this.hero = this.mesh.userData.hero;
     this.fx = getFX(scene);
     this.camera = camera; this.vel = new THREE.Vector3(); this.onGround = true;
-    this.keys = {}; this.yaw = 0; this.pitch = 0.58; this.dist = 12; this.t = 0;
+    this.keys = {}; this.yaw = 0; this.pitch = 0.64; this.dist = 9.2; this.t = 0;
     this.speed = 0; this.moveDir = new THREE.Vector3(); this.coyote = 0; this.jumpBuf = 0; this.fov = camera.fov; this.baseFov = camera.fov;
     this.camDist = this.dist; this.lookAt = new THREE.Vector3(); this.camInit = false; this.vyPrev = 0;
     this.mesh.position.set(0, heightAt(0, 0), 0);
@@ -28,7 +28,7 @@ export class Player {
       if (!drag) return;
       this.yaw -= e.movementX * 0.005; this.pitch = THREE.MathUtils.clamp(this.pitch + e.movementY * 0.004, 0.1, 1.3);
     });
-    dom.addEventListener('wheel', e => { this.dist = THREE.MathUtils.clamp(this.dist + e.deltaY * 0.01, 5, 25); });
+    dom.addEventListener('wheel', e => { this.dist = THREE.MathUtils.clamp(this.dist + e.deltaY * 0.01, 4, 22); });
   }
   // Hero customisation hook: player.setOutfit({ hat:'cap'|'straw'|'beanie'|'flower'|'crown'|'none', shirt:'#hex', pants, hair, skin, pack })
   setOutfit(o) { this.hero.setOutfit(o); return this; }
@@ -106,6 +106,18 @@ export class Player {
       const d = this.dist * s / 12, x = pivot.x + cp.x * d, z = pivot.z + cp.z * d, y = pivot.y + cp.y * d;
       if (y < groundAt(x, z) + 0.9) { limit = Math.max(2.2, this.dist * (s - 1) / 12); break; }
     }
+    // props between hero and camera: world.obstacles = [{x,z,r,top}] (trunks/bushes/rocks, optional, set by the nature builder) pull the camera in
+    const obs = world.obstacles;
+    if (obs && obs.length) {
+      const ex = cp.x, ez = cp.z, el = Math.hypot(ex, ez) || 1;
+      for (const o of obs) {
+        const rx = o.x - pivot.x, rz = o.z - pivot.z, t = (rx * ex + rz * ez) / el;          // distance along the ray's ground projection
+        if (t < 1.2 || t > this.dist * Math.cos(this.pitch)) continue;
+        const dx = rx - (ex / el) * t, dz = rz - (ez / el) * t; if (dx * dx + dz * dz > o.r * o.r) continue;
+        const rayY = pivot.y + cp.y / Math.max(1e-3, Math.hypot(cp.x, cp.z)) * t; if (rayY > (o.top ?? 99)) continue;
+        limit = Math.max(2.4, Math.min(limit, (t - o.r) / Math.max(0.2, Math.cos(this.pitch))));
+      }
+    }
     this.camDist = limit < this.camDist ? damp(this.camDist, limit, 14, dt) : damp(this.camDist, limit, 2.5, dt);
     const desired = pivot.clone().addScaledVector(cp, this.camDist);
     desired.y = Math.max(desired.y, groundAt(desired.x, desired.z) + 0.8);
@@ -114,8 +126,8 @@ export class Player {
     this.camera.position.y = damp(this.camera.position.y, desired.y, 9, dt);
     this.camera.position.z = damp(this.camera.position.z, desired.z, 9, dt);
     this.lookAt.x = damp(this.lookAt.x, p.x, 12, dt); this.lookAt.z = damp(this.lookAt.z, p.z, 12, dt);
-    this.lookAt.y = damp(this.lookAt.y, p.y + 1.5, 7, dt);
-    this.camera.lookAt(this.lookAt);
+    this.lookAt.y = damp(this.lookAt.y, p.y + 1.2, 7, dt);
+    this.camera.lookAt(this.lookAt); world.cameraPos.copy(this.camera.position);
     const tf = this.baseFov + (this.speed > 7 ? (this.speed - 7) / 4 * 8 : 0) + (this.onGround ? 0 : 1.5);
     this.fov = damp(this.fov, tf, 4, dt);
     if (Math.abs(this.camera.fov - this.fov) > 0.01) { this.camera.fov = this.fov; this.camera.updateProjectionMatrix(); }

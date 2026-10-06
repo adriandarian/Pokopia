@@ -7,6 +7,7 @@ import * as S from './species.js';
 import { buildGrass } from './grass.js';
 import { buildPond } from './pond.js';
 import { buildProps } from './props.js';
+import { world } from '../chars/fx.js';
 import { buildPetals } from './petals.js';
 
 /** CPU frustum + distance culling for instanced foliage (fewer triangles in both main and shadow passes). */
@@ -83,6 +84,7 @@ export function scatterNature(scene) {
   const reeds = inst(S.reed(), mkMat({ amp: 0.06, heightGain: 0.05 }), 80);
 
   // trees: groves, meadows with lone trees, landmarks
+  const obs = world.obstacles = []; if (typeof window !== 'undefined') { window.__obstacles = obs; window.__world = world; } // camera-occlusion list for the follow camera: {x, z, r, top(world Y)}
   let tries = 0;
   const count = { oak: 0, pine: 0, palm: 0, bloss: 0 };
   const addTree = (kind, x, z, h, sc, rot) => {
@@ -93,9 +95,11 @@ export function scatterNature(scene) {
     else if (kind === 'oak') oak.add1(x, y, z, sc, rot, tint, sy, tilt);
     else oak2.add1(x, y, z, sc, rot, tint, sy, tilt);
     taken.push([x, z, 1.5 * sc]); treePts.push([x, z, sc * 0.6]);
+    if (kind === 'pine') obs.push({ x, z, r: 1.2 * sc, top: h + 6.2 * sc * sy });
+    else obs.push({ x, z, r: (kind === 'bloss' ? 0.9 : 1.2) * sc, top: h + (kind === 'bloss' ? 3.0 * sc * 0.62 + 0.5 : 4.6 * sc * sy) });
   };
   const bloss_add = (...a) => blossom.add1(...a);
-  for (const t of buildProps(scene)) taken.push(t);
+  const propClear = buildProps(scene); for (const t of propClear) taken.push(t);
   for (const L of LANDMARKS) {
     const h = heightAt(L.x, L.z);
     addTree(L.kind === 'blossom' ? 'bloss' : L.kind, L.x, L.z, h, L.s, rnd() * 6.28);
@@ -117,7 +121,7 @@ export function scatterNature(scene) {
     const rot = rnd() * 6.28;
     if (h < 2.0) { // beach palms, clumped
       if (count.palm >= 34 || rnd() > 0.05 * (0.3 + fbm(x * 0.08, z * 0.08, 2, 51) * 2) || !free(x, z, 3.2)) continue;
-      palm.add1(x, h - 0.15, z, 0.8 + rnd() * 0.6, rot, jitter(0.12), 0.9 + rnd() * 0.3, 0.05 + rnd() * 0.05); taken.push([x, z, 1.5]); treePts.push([x, z, 0.4]); count.palm++; continue;
+      palm.add1(x, h - 0.15, z, 0.8 + rnd() * 0.6, rot, jitter(0.12), 0.9 + rnd() * 0.3, 0.05 + rnd() * 0.05); taken.push([x, z, 1.5]); treePts.push([x, z, 0.4]); obs.push({ x, z, r: 0.35, top: h + 5 }); count.palm++; continue;
     }
     if (h > 10.8) continue;
     const g = groveMask(x, z), m = meadowMask(x, z);
@@ -159,6 +163,7 @@ export function scatterNature(scene) {
     const sc = 0.7 + rnd() * 0.7;
     (rnd() < 0.18 ? berry : bushM).add1(x, h - 0.1, z, sc, rnd() * 6.28, jitter(0.2), 0.9 + rnd() * 0.3);
     taken.push([x, z, 0.8 * sc]);
+    if (sc > 0.9) obs.push({ x, z, r: 0.8 * sc, top: h + 1.3 * sc });
   }
   // rocks (beach, cliffs, pond rim)
   tries = 0;
@@ -171,7 +176,7 @@ export function scatterNature(scene) {
     const sc = 0.3 + Math.pow(rnd(), 2) * (cliff ? 1.0 : 0.8);
     const tint = col.setHSL(0.07 + rnd() * 0.03, 0.08, 0.7 + rnd() * 0.3).clone();
     (rnd() < 0.5 ? rocks : rocks2).add1(x, h + sc * 0.05, z, sc, rnd() * 6.28, tint, 0.8 + rnd() * 0.5, 0.12);
-    if (sc > 0.6) taken.push([x, z, sc]);
+    if (sc > 0.6) { taken.push([x, z, sc]); if (sc > 0.8) obs.push({ x, z, r: sc * 0.9, top: h + sc * 0.9 }); }
     if (rnd() < 0.5) { const x2 = x + (rnd() - 0.5) * 1.5, z2 = z + (rnd() - 0.5) * 1.5; rocks2.add1(x2, heightAt(x2, z2) + 0.02, z2, sc * 0.45, rnd() * 6.28, tint, 0.8, 0.12); }
   }
   // reeds around pond
@@ -183,11 +188,11 @@ export function scatterNature(scene) {
   }
   // flowers in patches
   const pal = [['#ff7eb6', '#ffe36a'], ['#ffd23f', '#e8892b'], ['#ffffff', '#ffd23f'], ['#b28dff', '#fff2a0'], ['#ff9f43', '#7a3b1a'], ['#7ec8ff', '#fff2a0']];
-  const fl = pal.map(p => inst(S.flower(p[0], p[1]), mkMat({ amp: 0.06, heightGain: 0.1, speed: 2 }), 900, { cast: false }));
+  const fl = pal.map((p, pi) => inst(S.flower(p[0], p[1], pi === 1 || pi === 4), mkMat({ amp: 0.06, heightGain: 0.1, speed: 2 }), 900, { cast: false }));
   tries = 0; let nf = 0;
   while (tries++ < 40000 && nf < 4200) {
     const x = (rnd() - 0.5) * WORLD * 0.92, z = (rnd() - 0.5) * WORLD * 0.92, h = heightAt(x, z);
-    if (h < 1.5 || h > 9 || pathMask(x, z) > 0.08 || pondD(x, z) < 1.0 || slopeAt(x, z) > 0.45) continue;
+    if (propClear.some(a => (a[0] - x) ** 2 + (a[1] - z) ** 2 < a[2] * a[2]) || h < 1.5 || h > 9 || pathMask(x, z) > 0.08 || pondD(x, z) < 1.0 || slopeAt(x, z) > 0.45) continue;
     const patch = fbm(x * 0.11, z * 0.11, 2, 33) * (0.5 + 0.75 * meadowMask(x, z));
     if (patch < 0.45 || rnd() > (patch - 0.43) * 5) continue;
     const k = Math.floor(fbm(x * 0.03 + 5, z * 0.03, 2, 8) * 2.3 * pal.length) % pal.length;
@@ -204,7 +209,7 @@ export function scatterNature(scene) {
   const bst = blossom.userData.store, bp = [];
   for (let i = 0; i < bst.n; i++) bp.push([bst.pos[i * 3], bst.pos[i * 3 + 1], bst.pos[i * 3 + 2], bst.sc[i]]);
   buildPetals(scene, bp);
-  buildGrass(scene, { free, pathMask, pondD, slopeAt, rnd });
+  buildGrass(scene, { free, pathMask, pondD, slopeAt, rnd, avoid: propClear });
   buildPond(scene);
   return { treePts };
 }

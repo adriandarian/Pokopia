@@ -17,9 +17,10 @@ function baseHeight(x, z) {
   const r = Math.hypot(x - SUMMIT.x, z - SUMMIT.z);
   let h = island * (6.0 + hills * 13.5 * (1 - 0.7 * m) + 5.5 * Math.exp(-(r * r) / 400)) - 3.2;
   // cliff ledges / terraces in rocky zones
-  const cliff = sstep(0.5, 0.62, fbm(x * 0.035 - 8, z * 0.035 + 4, 2, 9)) * sstep(1.8, 3.6, h) * (1 - m) * sstep(3, 9, routeDist(x, z));
-  const T = 3.4, t = h / T + (fbm(x * 0.18, z * 0.18, 2, 3) - 0.5) * 0.12, f = t - Math.floor(t);
-  h += ((Math.floor(t) + sstep(0.56, 0.78, f)) * T - h) * cliff * 0.96;
+  const cliff = sstep(0.44, 0.52, fbm(x * 0.035 - 8, z * 0.035 + 4, 2, 9)) * sstep(1.8, 3.6, h) * (1 - m) * sstep(2.5, 6, routeDist(x, z));
+  const ramp = 1 - sstep(0.64, 0.74, fbm(x * 0.055 + 30, z * 0.055 - 7, 2, 21)); // gaps in the ledges act as walkable ramps
+  const T = 2.3, t = h / T + (fbm(x * 0.18, z * 0.18, 2, 3) - 0.5) * 0.1, f = t - Math.floor(t);
+  h += ((Math.floor(t) + sstep(0.66, 0.74, f)) * T - h) * cliff * ramp;
   // flat hilltop viewpoint
   h += (SUMMIT.h - h) * sstep(14, 5, r);
   return h;
@@ -43,13 +44,17 @@ export function heightAt(x, z) {
 
 /** One terrain chunk as an indexed grid with a short skirt so LOD borders never show cracks. */
 function chunkGeo(x0, z0, size, seg, grad) {
-  const n = seg + 1, pos = [], nor = [], msk = [], idx = [];
+  const n = seg + 1, pos = [], nor = [], msk = [], lip = [], foot = [], idx = [];
   const push = (x, z, drop) => {
     const h = heightAt(x, z);
     pos.push(x, h - drop, z);
     const e = 0.5, dx = heightAt(x + e, z) - heightAt(x - e, z), dz = heightAt(x, z + e) - heightAt(x, z - e);
     const l = Math.hypot(dx, 2 * e, dz); nor.push(-dx / l, 2 * e / l, -dz / l);
     msk.push(h > 0.8 ? pathMask(x, z) : 0);
+    // ledge lip (top edge of a drop) and foot (bottom of a rise), from neighbours ~1 m away
+    let mn = h, mx = h;
+    for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const q = heightAt(x + ox, z + oz); if (q < mn) mn = q; if (q > mx) mx = q; }
+    lip.push(sstep(0.7, 1.5, h - mn)); foot.push(sstep(0.7, 1.5, mx - h));
   };
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) push(x0 + i / seg * size, z0 + j / seg * size, 0);
   for (let j = 0; j < seg; j++) for (let i = 0; i < seg; i++) {
@@ -73,6 +78,8 @@ function chunkGeo(x0, z0, size, seg, grad) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute('aMask', new THREE.Float32BufferAttribute(msk, 1));
+  g.setAttribute('aLip', new THREE.Float32BufferAttribute(lip, 1));
+  g.setAttribute('aFoot', new THREE.Float32BufferAttribute(foot, 1));
   g.setIndex(idx);
   return g;
 }
@@ -84,12 +91,12 @@ export function buildTerrain(scene) {
     sh.uniforms.uPond = { value: new THREE.Vector4(POND.x, POND.z, POND.r, POND_LEVEL) };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute float aMask; varying float vP; varying vec3 vW; varying vec3 vN;`)
+        attribute float aMask; attribute float aLip; attribute float aFoot; varying float vLip; varying float vFoot; varying float vP; varying vec3 vW; varying vec3 vN;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        vP = aMask; vW = position; vN = normal;`);
+        vP = aMask; vLip = aLip; vFoot = aFoot; vW = position; vN = normal;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform vec4 uPond; varying float vP; varying vec3 vW; varying vec3 vN;
+        uniform vec4 uPond; varying float vLip; varying float vFoot; varying float vP; varying vec3 vW; varying vec3 vN;
         float h21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
         float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
           return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x), f.y); }
@@ -134,26 +141,33 @@ export function buildTerrain(scene) {
         // darker, drier tufty rim where grass meets sand
         col = mix(col, col*vec3(1.05,1.0,.78), smoothstep(.3,.0,abs(gm-.5)-.2)*.5);
         // rock: cut faces with discrete strata layers, blocky seams and warm/cool variation
-        float rockM = smoothstep(.3,.5, slope + (n2-.5)*.1);
-        float layer = floor(h*2.3 + n1*1.6);
+        float pm0 = smoothstep(.45,.5, vP);
+        float rockM = max(smoothstep(.3,.5, slope + (n2-.5)*.1), smoothstep(.45,1.1, vLip+vFoot)*.95);
+        float layer = floor(h*2.3 + n1*1.2);
         float lh = h21(vec2(layer, 7.3));
-        vec3 rockC = mix(mix(vec3(.66,.6,.54), vec3(.5,.45,.43), lh), vec3(.76,.67,.5), step(.72,lh)*.8);
-        float lf = fract(h*2.3 + n1*1.6);
-        rockC *= .9 + .13*smoothstep(.0,.2,lf) - .22*smoothstep(.86,1.,lf);   // dark seam under each layer
-        vec3 vr = vor(vec2((xz.x+xz.y*.7)*.9, h*1.7));
-        rockC *= .9 + .2*vr.y;  rockC *= 1. - .3*smoothstep(.34,.5,vr.x);
-        rockC = mix(rockC, vec3(.4,.52,.34), smoothstep(.55,.9,n2)*.3*smoothstep(.5,.3,slope)); // moss on gentler faces
-        rockC *= .92 + .14*vn(vec2(xz.x+xz.y, h*3.)*4.);
+        vec3 rockC = mix(vec3(.6,.58,.55), vec3(.46,.45,.45), lh*.8);
+        rockC = mix(rockC, vec3(.72,.66,.54), step(.7,lh)*.45);
+        float lf = fract(h*2.3 + n1*1.2);
+        rockC *= .94 + .06*smoothstep(.0,.2,lf) - .14*smoothstep(.88,1.,lf);
+        // soft, domain-warped mottling (no repeating cells)
+        vec2 rq = vec2(xz.x+xz.y*.7, h*1.6) + 1.8*vec2(fb(xz*.5), fb(xz*.5+9.));
+        rockC *= .9 + .2*fb(rq*1.3) + .06*(vn(rq*6.)-.5);
+        rockC = mix(rockC, vec3(.4,.52,.34), smoothstep(.55,.9,n2)*.25*smoothstep(.5,.3,slope));
+        rockC *= .96 + .1*vn(vec2(xz.x+xz.y, h*3.)*3.);
         col = mix(col, rockC, rockM);
+        // ledge lip: pale sun-baked sandstone edge; foot: dark shadowy crevice
+        vec3 lipC = mix(vec3(.84,.76,.58), vec3(.74,.68,.55), n2) * (.94 + .1*fine);
+        col = mix(col, lipC, vLip*(1.-pm0)*smoothstep(.35,.12,slope)*.9);
+        col *= 1. - .22*vFoot*(1.-vLip);
         col *= 1. - .14*smoothstep(.1,.3,slope)*(1.-rockM*.5);
         // pond bank / mud ring + underwater bed gradient
         float pd = length(xz - uPond.xy)/uPond.z;
         float bank = smoothstep(1.55, .95, pd + (n2-.5)*.3) * (1.-rockM);
-        vec3 mud = mix(vec3(.46,.35,.24), vec3(.6,.5,.34), n2);
+        vec3 mud = mix(vec3(.8,.7,.5), vec3(.9,.8,.6), n2); mud = mix(mud, vec3(.62,.6,.57)*(.85+.3*vn(xz*14.)), step(.82, vn(xz*8.+3.))*.8);
         float shore = smoothstep(uPond.w+1.0, uPond.w+.05, h);
         col = mix(col, mud*(.88+.2*fine), bank*shore*.92);
         // sandy wet rim just above waterline
-        col = mix(col, col*vec3(.62,.55,.45), bank*smoothstep(uPond.w+.35, uPond.w, h)*.7);
+        col = mix(col, col*vec3(.72,.66,.56), bank*smoothstep(uPond.w+.3, uPond.w, h)*.6);
         float under = smoothstep(uPond.w+.05, uPond.w-.15, h)*smoothstep(1.5,1.,pd);
         col = mix(col, mix(vec3(.42,.5,.36), vec3(.05,.22,.28), smoothstep(uPond.w, uPond.w-1.3, h)), under);
         // dirt path: crisp edge, grass-tuft fringe, darker rim

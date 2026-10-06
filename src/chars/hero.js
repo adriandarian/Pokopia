@@ -58,23 +58,26 @@ export function buildHero(opts = {}) {
 
   // legs: hip pivot -> knee pivot -> shoe
   const legs = [-1, 1].map(sx => {
-    const g = new THREE.Group(); g.position.set(sx * 0.19, 0.74, 0); rig.add(g);
-    part(g, new THREE.CapsuleGeometry(0.15, 0.14, 6, 12), mats.pants, { pos: [0, -0.17, 0] });
-    const knee = new THREE.Group(); knee.position.y = -0.33; g.add(knee);
-    part(knee, new THREE.CapsuleGeometry(0.125, 0.12, 6, 12), mats.skin, { pos: [0, -0.12, 0] });
-    const foot = new THREE.Group(); foot.position.y = -0.26; knee.add(foot);
-    part(foot, S(), mats.shoe, { pos: [0, -0.06, 0.07], scale: [0.23, 0.15, 0.33] });
-    part(foot, S(), mats.shoe, { pos: [0, -0.05, 0.29], scale: [0.19, 0.12, 0.16], line: 0.02 });
-    part(foot, S(), mats.sole, { pos: [0, -0.17, 0.1], scale: [0.235, 0.04, 0.36], line: 0 });
+    const g = new THREE.Group(); g.position.set(sx * 0.19, 0.8, 0); rig.add(g);
+    part(g, new THREE.CapsuleGeometry(0.15, 0.17, 6, 12), mats.pants, { pos: [0, -0.18, 0] });
+    const knee = new THREE.Group(); knee.position.y = -0.36; g.add(knee);
+    part(knee, new THREE.CapsuleGeometry(0.125, 0.15, 6, 12), mats.skin, { pos: [0, -0.14, 0] });
+    const foot = new THREE.Group(); foot.position.y = -0.29; knee.add(foot);
+    part(foot, S(), mats.shoe, { pos: [0, -0.06, 0.07], scale: [0.2, 0.13, 0.29] });
+    part(foot, S(), mats.shoe, { pos: [0, -0.05, 0.26], scale: [0.165, 0.1, 0.14], line: 0.02 });
+    part(foot, S(), mats.sole, { pos: [0, -0.16, 0.09], scale: [0.205, 0.035, 0.32], line: 0 });
     g.userData = { knee, foot }; return g;
   });
 
   // torso
-  const torso = new THREE.Group(); torso.position.y = 1.0; rig.add(torso);
+  const torso = new THREE.Group(); torso.position.y = 1.06; rig.add(torso);
   part(torso, new THREE.CapsuleGeometry(0.36, 0.12, 8, 18), mats.shirt, { pos: [0, 0.02, 0], scale: [1, 1, 0.92] });
   part(torso, new THREE.CylinderGeometry(0.37, 0.45, 0.16, 24), mats.shirt, { pos: [0, -0.24, 0], scale: [1, 1, 0.92], line: 0.02 }); // shirt hem flare
   part(torso, S(), mats.pants, { pos: [0, -0.32, 0], scale: [0.4, 0.14, 0.36], line: 0 });                                          // shorts
   part(torso, new THREE.TorusGeometry(0.2, 0.05, 8, 20), toon('#fff1de', { fuzz: 0.1 }), { pos: [0, 0.34, 0.04], rot: [Math.PI / 2 - 0.15, 0, 0], line: 0.015 }); // collar
+  part(torso, new THREE.CylinderGeometry(0.372, 0.385, 0.07, 24), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, 0.0, 0], scale: [1, 1, 0.92], line: 0 });
+  part(torso, new THREE.CylinderGeometry(0.385, 0.4, 0.045, 24), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, -0.1, 0], scale: [1, 1, 0.92], line: 0 });
+  part(torso, S(), toon('#fff4e0', { fuzz: 0.1, rim: 0.1 }), { pos: [0.17, 0.08, 0.31], scale: [0.1, 0.085, 0.03], rot: [-0.15, 0.2, 0], line: 0.012 });
   const pack = new THREE.Group(); torso.add(pack);
   const flapM = toonUnique('#d98a2b', { fuzz: 0.12 }); mats.packFlap = flapM;
   part(pack, new THREE.CapsuleGeometry(0.22, 0.1, 8, 14), mats.pack, { pos: [0, -0.02, -0.4], scale: [1, 1, 0.72] });
@@ -85,10 +88,10 @@ export function buildHero(opts = {}) {
   // arms: shoulder -> elbow -> mitten hand with thumb
   const arms = [-1, 1].map(sx => {
     const g = new THREE.Group(); g.position.set(sx * 0.47, 0.25, 0); torso.add(g);
-    part(g, new THREE.CapsuleGeometry(0.125, 0.1, 6, 10), mats.shirt, { pos: [0, -0.12, 0] });
-    const elbow = new THREE.Group(); elbow.position.y = -0.25; g.add(elbow);
-    part(elbow, new THREE.CapsuleGeometry(0.1, 0.1, 6, 10), mats.skin, { pos: [0, -0.1, 0] });
-    const hand = new THREE.Group(); hand.position.y = -0.27; elbow.add(hand);
+    part(g, new THREE.CapsuleGeometry(0.12, 0.15, 6, 10), mats.shirt, { pos: [0, -0.14, 0] });
+    const elbow = new THREE.Group(); elbow.position.y = -0.3; g.add(elbow);
+    part(elbow, new THREE.CapsuleGeometry(0.095, 0.14, 6, 10), mats.skin, { pos: [0, -0.12, 0] });
+    const hand = new THREE.Group(); hand.position.y = -0.34; elbow.add(hand);
     part(hand, S(), mats.skin, { pos: [0, -0.07, 0.01], scale: [0.14, 0.15, 0.115], line: 0.022 });
     part(hand, S(), mats.skin, { pos: [-sx * 0.13, -0.05, 0.07], scale: [0.065, 0.09, 0.065], line: 0.018, rot: [0.3, 0, -sx * 0.5] });
     for (const fx of [-0.07, 0, 0.07]) part(hand, S(), mats.skin, { pos: [fx, -0.2, 0.025], scale: [0.045, 0.085, 0.05], line: 0.014 });
@@ -96,7 +99,7 @@ export function buildHero(opts = {}) {
   });
 
   // ---- head ----
-  const head = new THREE.Group(); head.position.set(0, 1.34, 0); rig.add(head);
+  const head = new THREE.Group(); head.position.set(0, 1.4, 0); rig.add(head);
   const headC = [0, 0.52, 0], HR = 0.62, HRX = HR * 1.04;
   part(head, S(), mats.skin, { pos: headC, scale: [HRX, HR, HR] });
   // ears: half-sunk discs on the skull with an inner shell
@@ -214,37 +217,16 @@ export function buildHero(opts = {}) {
     g.position.set(0.03, 0.5, -0.02); g.rotation.set(0.08, 0, -0.12);
     hats.party = g; hatHides.party = ['ahoge'];
   }
-  { // cat-ear headband
-    const g = new THREE.Group(), items = [], dk = '#4a4458';
-    items.push({ geo: new THREE.TorusGeometry(0.71, 0.045, 8, 28, Math.PI), color: dk, pos: [0, 0.04, 0] });
+  { // cat-ear headband: big dark ears, pink inner
+    const g = new THREE.Group(), items = [], dk = '#2e2a3d';
+    items.push({ geo: new THREE.TorusGeometry(0.71, 0.05, 8, 28, Math.PI), color: dk, pos: [0, 0.04, 0] });
     for (const sx of [-1, 1]) {
-      items.push({ geo: new THREE.ConeGeometry(0.21, 0.42, 3), color: dk, pos: [sx * 0.43, 0.84, 0], rot: [0, 0, -sx * 0.4], scale: [1, 1, 0.55] });
-      items.push({ geo: new THREE.ConeGeometry(0.12, 0.28, 3), color: '#ff9ecb', pos: [sx * 0.435, 0.82, 0.06], rot: [0, 0, -sx * 0.4], scale: [1, 1, 0.4] });
+      items.push({ geo: new THREE.ConeGeometry(0.3, 0.62, 3), color: dk, pos: [sx * 0.44, 0.92, 0], rot: [0, 0, -sx * 0.3], scale: [1, 1, 0.6] });
+      items.push({ geo: new THREE.ConeGeometry(0.19, 0.42, 3), color: '#ff7eb8', pos: [sx * 0.445, 0.88, 0.075], rot: [0, 0, -sx * 0.3], scale: [1, 1, 0.45] });
     }
-    part(g, mergeColored(items), vcMat({ fuzz: 0.35 }), { line: 0.02 });
+    part(g, mergeColored(items), vcMat({ fuzz: 0.3, rim: 0.2 }), { line: 0.02 });
     g.position.set(0, 0.0, -0.05); g.rotation.x = -0.12;
     hats.cat = g; hatHides.cat = ['ahoge'];
-  }
-  { // wizard hat: wide brim, tall bent cone, band, star
-    const g = new THREE.Group(), items = [];
-    items.push({ geo: new THREE.CylinderGeometry(1.0, 1.02, 0.06, 32), color: '#5a3fb0', pos: [0, 0.0, 0] });
-    items.push({ geo: new THREE.CylinderGeometry(0.72, 0.76, 0.3, 28), color: '#6d4fd0', pos: [0, 0.17, 0] });
-    items.push({ geo: new THREE.CylinderGeometry(0.46, 0.72, 0.4, 28), color: '#6d4fd0', pos: [0, 0.52, 0.0], rot: [-0.04, 0, 0.0] });
-    items.push({ geo: new THREE.CylinderGeometry(0.22, 0.46, 0.34, 24), color: '#6d4fd0', pos: [0, 0.88, -0.03], rot: [-0.14, 0, 0] });
-    items.push({ geo: new THREE.ConeGeometry(0.22, 0.4, 16), color: '#6d4fd0', pos: [0, 1.2, -0.12], rot: [-0.45, 0, 0] });
-    items.push({ geo: new THREE.TorusGeometry(0.74, 0.06, 8, 28), color: '#ffd84a', pos: [0, 0.06, 0], rot: [Math.PI / 2, 0, 0] });
-    items.push({ geo: new THREE.OctahedronGeometry(0.1), color: '#ffe066', pos: [0, 0.14, 0.75], scale: [1, 1, 0.5] });
-    items.push({ geo: sphereGeo(1, 8, 6), color: '#ffe066', pos: [0.45, 0.6, 0.5], scale: [0.04, 0.04, 0.04] });
-    items.push({ geo: sphereGeo(1, 8, 6), color: '#ffe066', pos: [-0.4, 0.4, 0.58], scale: [0.035, 0.035, 0.035] });
-    part(g, mergeColored(items), vcMat({ fuzz: 0.2 }), { line: 0.02 });
-    g.position.set(0, 0.34, -0.02); g.rotation.x = 0.06;
-    hats.wizard = g; hatHides.wizard = ['ahoge', 'bangs'];
-  }
-  { // halo
-    const g = new THREE.Group(), gm = toon('#ffe066', { emissive: '#ffcc33', ei: 0.9, rim: 0.6 });
-    part(g, new THREE.TorusGeometry(0.4, 0.06, 10, 32), gm, { rot: [Math.PI / 2, 0, 0], line: 0.015 });
-    g.position.set(0, 1.0, -0.05);
-    hats.halo = g; hatHides.halo = ['ahoge'];
   }
   const hideable = { bangs, ahoge, sides };
   for (const k in hats) { hats[k].visible = false; hatRoot.add(hats[k]); }
@@ -263,7 +245,7 @@ export function buildHero(opts = {}) {
   const hero = {
     root, mats, hats, head, torso, arms, legs, face, faceAnchor,
     // emote('wave'|'dance'|'cheer'|'sit'|'none', seconds?) -- 'sit' holds until cancelled (or the hero moves)
-    emote(name, dur) { if (!name || name === 'none') { st.em = null; return this; } st.em = { name, t: 0, dur: dur ?? ({ wave: 2.4, dance: 5, cheer: 1.8, sit: 1e9 })[name] ?? 2 }; return this; },
+    emote(name, dur) { if (!name || name === 'none') { st.em = null; return this; } st.em = { name, t: 0, dur: dur ?? ({ wave: 3, dance: 5, cheer: 2.5, sit: 1e9 })[name] ?? 2 }; return this; },
     get emoting() { return st.em ? st.em.name : null; },
     // setOutfit({ hat: 'cap'|'straw'|'beanie'|'flower'|'crown'|'party'|'cat'|'none' (legacy ids 'hat_crown' etc. also accepted),
     //             shirt:'#hex', pants, hair, skin, pack, backpack:bool })
@@ -301,7 +283,7 @@ export function buildHero(opts = {}) {
       // weight: bounce + hip sway + torso side-shift over the planted foot
       const bounce = air ? 0 : Math.abs(sw) * 0.09 * amp;
       st.sway = damp(st.sway, air ? 0 : sw * 0.05 * amp, 20, dt);
-      torso.position.y = 1.0 + bounce * 0.5 - st.crouch * 0.1 - st.landRec * 0.1; head.position.y = 1.34 + bounce - st.crouch * 0.14 - st.landRec * 0.12;
+      torso.position.y = 1.06 + bounce * 0.5 - st.crouch * 0.1 - st.landRec * 0.1; head.position.y = 1.4 + bounce - st.crouch * 0.14 - st.landRec * 0.12;
       torso.position.x = st.sway; head.position.x = -st.sway * 0.5;
       const f = Math.sign(sw);
       if (!air && mv > 0.3 && f !== st.foot) { st.foot = f; s.onFoot && s.onFoot(f, run); } else if (mv <= 0.3) st.foot = 0;
@@ -318,7 +300,7 @@ export function buildHero(opts = {}) {
         l.rotation.x = lerp(l.rotation.x, hip, Math.min(1, dt * 22));
         kn.rotation.x = lerp(kn.rotation.x, knee, Math.min(1, dt * 22));
         ft.rotation.x = -(l.rotation.x + kn.rotation.x) * 0.55 + (air ? 0.4 : 0);
-        l.position.y = 0.74 + (air ? 0.05 : 0);
+        l.position.y = 0.8 + (air ? 0.05 : 0);
       }
       // arms: swing + elbow bend + hand flop; crouch pulls arms back, jump throws them up
       st.idle = mv < 0.1 && !air ? st.idle + dt : 0;
@@ -327,7 +309,7 @@ export function buildHero(opts = {}) {
       for (let i = 0; i < 2; i++) {
         const side = i ? 1 : -1, a = arms[i], { elbow, hand } = a.userData;
         if (emoOn) continue;
-        let rx = -side * sw * amp * 1.1 + st.crouch * 0.7, rz = (i ? -1 : 1) * 0.14 + st.crouch * (i ? -1 : 1) * 0.1;
+        let rx = -side * sw * amp * 1.1 + st.crouch * 0.7, rz = (i ? 1 : -1) * 0.27 + st.crouch * (i ? 1 : -1) * 0.1;
         let el = -(0.25 + run * 0.7) * mv - 0.12 - st.crouch * 0.2;
         if (side * sw < 0) el -= 0.3 * amp; // forward arm bends more
         if (air) { rx = lerp(a.rotation.x, -0.4, dt * 10); rz = (i ? -1 : 1) * (s.vy > 0 ? 2.3 : 1.4); el = -0.3; }
@@ -358,9 +340,12 @@ export function buildHero(opts = {}) {
       bangs.rotation.x = st.hatX * 0.5 + (air ? Math.min(0.3, Math.max(-0.3, -s.vy * 0.02)) : 0); sides.rotation.z = st.hatZ * 0.3;
       // ---- emotes (override poses; blended in with lerps) ----
       let drop = 0, happyForce = false;
+      const nv = [torso.rotation.x, torso.rotation.y, torso.rotation.z, head.rotation.x, head.rotation.y, head.rotation.z, torso.position.x, head.position.x];
       if (st.em) {
         const em = st.em; em.t += dt;
-        if ((mv > 0.15 && em.name !== 'dance') || air || em.t > em.dur) st.em = null;
+        if (!em.fade && ((mv > 0.15 && em.name !== 'dance') || air || em.t > em.dur)) em.fade = 0.4;
+        if (em.fade !== undefined) { em.fade -= dt; if (em.fade <= 0) st.em = null; }
+        if (!st.em) { /* done */ }
         else {
           const k = Math.min(1, dt * 16), e = em.t, A = arms, L = legs;
           const setArm = (i, rx, rz, el) => { A[i].rotation.x = lerp(A[i].rotation.x, rx, k); A[i].rotation.z = lerp(A[i].rotation.z, rz, k); A[i].userData.elbow.rotation.x = lerp(A[i].userData.elbow.rotation.x, el, k); };
@@ -371,11 +356,18 @@ export function buildHero(opts = {}) {
             torso.rotation.z = 0.12 + Math.sin(e * 5.5) * 0.06; torso.rotation.x = -0.08; head.rotation.z = -0.22 + Math.sin(e * 5.5) * 0.08; head.rotation.x = -0.12;
             drop = -Math.abs(Math.sin(e * 5.5)) * 0.04;
           } else if (em.name === 'cheer') {
-            const ph = Math.sin(e * 6.5), hop = Math.max(0, ph); happyForce = true;
-            rig.position.y = hop * 0.7; const air2 = hop > 0.05;
-            setArm(0, -0.2 - hop * 0.4, -2.5 - hop * 0.5, -0.4 - hop * 0.5); setArm(1, -0.2 - hop * 0.4, 2.5 + hop * 0.5, -0.4 - hop * 0.5);
-            setLeg(0, air2 ? 0.7 : -0.3, air2 ? 1.3 : 0.9); setLeg(1, air2 ? -0.5 : -0.3, air2 ? 1.3 : 0.9);
-            drop = ph < 0 ? ph * 0.16 : 0; head.rotation.x = -0.45; torso.rotation.x = -0.18; torso.rotation.z = Math.sin(e * 3.25) * 0.12;
+            happyForce = true; const e2 = e - 0.3;
+            if (e2 < 0) { // anticipation: crouch, arms swing back
+              const q = Math.sin(Math.min(1, e / 0.3) * Math.PI / 2);
+              drop = -0.2 * q; setArm(0, 0.9 * q, -0.5, -0.3); setArm(1, 0.9 * q, 0.5, -0.3); setLeg(0, -0.5 * q, 1.0 * q); setLeg(1, -0.5 * q, 1.0 * q);
+              torso.rotation.x = 0.3 * q; head.rotation.x = 0.1 * q;
+            } else {
+              const ph = Math.sin(e2 * 6.5), hop = Math.max(0, ph);
+              rig.position.y = hop * 0.7; const air2 = hop > 0.05;
+              setArm(0, -0.1, -2.45 - hop * 0.25, -0.12 - hop * 0.2); setArm(1, -0.1, 2.45 + hop * 0.25, -0.12 - hop * 0.2);
+              setLeg(0, air2 ? 0.7 : -0.3, air2 ? 1.3 : 0.9); setLeg(1, air2 ? -0.5 : -0.3, air2 ? 1.3 : 0.9);
+              drop = ph < 0 ? ph * 0.16 : 0; head.rotation.x = -0.45; torso.rotation.x = -0.18; torso.rotation.z = Math.sin(e2 * 3.25) * 0.12;
+            }
           } else if (em.name === 'dance') {
             const b = Math.sin(e * 6.5), b2 = Math.sin(e * 6.5 + Math.PI), c = Math.sin(e * 3.25);
             drop = -Math.abs(b) * 0.16; happyForce = true;
@@ -391,8 +383,15 @@ export function buildHero(opts = {}) {
           }
         }
       } else { rig.rotation.y = lerp(rig.rotation.y, 0, Math.min(1, dt * 10)); rig.position.y = lerp(rig.position.y, 0, Math.min(1, dt * 12)); }
+      if (st.em) {
+        const w = Math.min(1, st.em.t / 0.2) * (st.em.fade !== undefined ? Math.max(0, st.em.fade / 0.4) : 1);
+        torso.rotation.x = lerp(nv[0], torso.rotation.x, w); torso.rotation.y = lerp(nv[1], torso.rotation.y, w); torso.rotation.z = lerp(nv[2], torso.rotation.z, w);
+        head.rotation.x = lerp(nv[3], head.rotation.x, w); head.rotation.y = lerp(nv[4], head.rotation.y, w); head.rotation.z = lerp(nv[5], head.rotation.z, w);
+        torso.position.x = lerp(nv[6], torso.position.x, w); head.position.x = lerp(nv[7], head.position.x, w);
+        rig.rotation.y *= w; rig.position.y *= w; drop *= w;
+      }
       if (drop) { const dd = drop; torso.position.y += dd; head.position.y += dd; for (const l of legs) l.position.y += (st.em?.name === 'sit' ? dd * 0.95 : 0); }
-      if (st.em && st.em.name === 'sit') for (const l of legs) l.position.y = 0.74 + drop;
+      if (st.em && st.em.name === 'sit') for (const l of legs) l.position.y = 0.8 + drop;
       blinker.update(dt, s.happy || happyForce);
       const h = s.heightAboveGround || 0;
       blob.position.y = 0.06 - h + (s.groundDelta || 0); blob.scale.setScalar(Math.max(0.35, 1 - h * 0.12)); blob.material.opacity = 0.28 * Math.max(0.3, 1 - h * 0.1);

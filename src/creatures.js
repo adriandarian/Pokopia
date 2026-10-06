@@ -10,7 +10,7 @@ import { getFX, tickFX, world } from './chars/fx.js';
 export { SPECIES };
 const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
 const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
-const NEAR = 30, FAR = 75;   // full detail inside NEAR, body-only to FAR, hidden / not simulated beyond
+const NEAR = 22, FAR = 60;   // full detail inside NEAR, body-only to FAR, hidden / not simulated beyond
 
 let blobMat, blobGeo;
 function makeCreature(sp) {
@@ -61,8 +61,10 @@ export class Creatures {
   update(dt, t) {
     this.frame++; world.frame++; tickFX(dt, world.frame);
     const pp = world.playerPos; let fi = 0;
+    const cpos = world.creaturePos; cpos.length = this.list.length;
     for (const c of this.list) {
       const p = c.m.position, ph = c.phase;
+      { const ci = this.list.indexOf(c); const e = cpos[ci] || (cpos[ci] = { x: 0, z: 0, r: 0.9 }); e.x = p.x; e.z = p.z; e.r = c.sp.name === 'Fluff' ? 1.2 : 0.9; }
       const dx = pp.x - p.x, dz = pp.z - p.z, dist = Math.hypot(dx, dz);
       // level of detail: far creatures are neither simulated nor drawn
       const lv = dist < NEAR || c.friend || c.pin ? 2 : dist < FAR ? 1 : 0; this.setLod(c, lv);
@@ -189,7 +191,7 @@ export class Creatures {
 
 // ---------------- Collectibles: gems & berries (instanced: 1 draw call per type + 1 for all halos) ----------------
 function gemGeo() {
-  const pts = [[0.001, -0.52], [0.13, -0.32], [0.36, 0.02], [0.4, 0.12], [0.3, 0.27], [0.18, 0.34], [0.001, 0.34]].map(([x, y]) => new THREE.Vector2(x, y));
+  const pts = [[0.001, -0.52], [0.1, -0.4], [0.2, -0.22], [0.37, 0.03], [0.4, 0.1], [0.36, 0.2], [0.27, 0.29], [0.17, 0.34], [0.09, 0.37], [0.001, 0.37]].map(([x, y]) => new THREE.Vector2(x, y));
   const g = new THREE.LatheGeometry(pts, 8); g.computeVertexNormals(); return g.toNonIndexed();
 }
 const sphere = (r, w = 12, h = 8) => sphereGeo(1, w, h);
@@ -234,7 +236,7 @@ export class Collectibles {
           .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
             float sd = vOP.x * 0.8 + vOP.y * 0.75; float sp = fract(uTime * 0.42 + vSeed) * 3.0 - 1.5;
             float band = smoothstep(0.17, 0.0, abs(sd - sp));
-            totalEmissiveRadiance += vec3(1.0, 0.98, 0.9) * (band * 1.5 + smoothstep(0.28, 0.34, vOP.y) * 0.22);`);
+            totalEmissiveRadiance += vec3(1.0, 0.98, 0.9) * (band * 1.5 + smoothstep(0.28, 0.34, vOP.y) * 0.22 + smoothstep(0.07, 0.0, abs(vOP.y - 0.16)) * 0.3 + smoothstep(0.08, 0.0, abs(vOP.y + 0.18)) * 0.12);`);
       };
       m.customProgramCacheKey = () => 'gemsweep';
       return m;
@@ -244,7 +246,7 @@ export class Collectibles {
     const berries = [['#ff4d6d', '#ff2a4d', 'straw'], ['#9a6bff', '#6a3dd8', 'blue']];
     for (const [c, e, k] of berries) this.types.push({
       kind: 'berry', color: c, geo: berryGeo(k),
-      mat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, emissive: e, emissiveIntensity: 0.18 }), glow: new THREE.Color(e),
+      mat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, emissive: e, emissiveIntensity: 0.12 }), glow: new THREE.Color(e),
     });
     const CAP = 90; this.cap = CAP;
     this.types.forEach(ty => { ty.inst = new THREE.InstancedMesh(ty.geo, ty.mat, CAP); ty.inst.count = 0; ty.inst.frustumCulled = false; ty.inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(ty.inst); });
