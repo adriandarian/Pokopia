@@ -3,6 +3,7 @@ import { heightAt } from '../terrain.js';
 import { pathMask, PATH_PTS } from './features.js';
 import { prep, merge, blob, cyl } from './geo.js';
 import { mulberry, hash2 } from '../noise.js';
+import { modelGeo, modelsReady } from './models.js';
 
 /** Rounded box with smooth normals (bevelled edges). */
 function rbox(w, h, d, rad, color, px = 0, py = 0, pz = 0, ry = 0) {
@@ -35,13 +36,14 @@ export function buildProps(scene) {
 
   // fallen mossy log with mushrooms
   { const x = -17, z = -9;
-    const parts = [cyl(0.3, 0.34, 3.4, 9, '#6f4a2b', { tiltZ: Math.PI / 2, shade: [0.8, 1.12], x: 1.7, y: 0.32 }),
+    const LG = false && modelGeo('log_large', { w: 3.4, colors: { woodBark: '#7f5632', woodInner: '#e6c48e' }, shade: [0.85, 1.12], smooth: 0.3 }); if (LG) LG.translate(1.7, 0, 0);
+    const parts = [LG || cyl(0.3, 0.34, 3.4, 9, '#6f4a2b', { tiltZ: Math.PI / 2, shade: [0.8, 1.12], x: 1.7, y: 0.32 }),
       mossTuft(0.8, 0.62, -0.1, 1.3), mossTuft(1.2, 0.6, 0.15, 1), mossTuft(2.3, 0.6, 0, 1.2), mossTuft(0.1, 0.1, 0.4, 1.3), mossTuft(1.9, 0.08, -0.4, 1.4), mossTuft(3.1, 0.1, 0.35, 1.1),
       blob(0.2, 0.6, 0, 0.3, '#6f9a45', { sy: 0.4, detail: 1, lump: 0.2, aw: 0, warm: false, shade: [1, 1.1] }),
       blob(1.6, 0.62, 0.05, 0.26, '#7fa84c', { sy: 0.4, detail: 1, lump: 0.2, aw: 0, warm: false, shade: [1, 1.1] }),
       blob(2.2, 0.35, 0.3, 0.1, '#e0453c', { detail: 0, sy: 0.7, lump: 0, aw: 0, warm: false, shade: [1, 1] }),
       blob(2.4, 0.33, 0.2, 0.08, '#e0453c', { detail: 0, sy: 0.7, lump: 0, aw: 0, warm: false, shade: [1, 1] }),
-      blob(3.45, 0.32, 0, 0.3, '#e2b97a', { sy: 0.1, detail: 0, lump: 0, aw: 0, warm: false, shade: [1, 1] })];
+      ...(LG ? [] : [blob(3.45, 0.32, 0, 0.3, '#e2b97a', { sy: 0.1, detail: 0, lump: 0, aw: 0, warm: false, shade: [1, 1] })])];
     const g = merge(parts); g.rotateZ(0); place(g, x, z, 0.5, -0.02); taken.push([x, z, 3.0]); }
 
   // stump circle in the north clearing
@@ -50,7 +52,8 @@ export function buildProps(scene) {
       const a = i / 7 * Math.PI * 2, x = cx + Math.cos(a) * 2.3, z = cz + Math.sin(a) * 2.3;
       if (!ok(x, z)) continue;
       const h = 0.4 + r() * 0.35;
-      const g = merge([cyl(0.3, 0.38, h, 9, '#9a6a3e', { shade: [0.85, 1.1] }), cyl(0.3, 0.3, 0.03, 9, '#e2bf8a', { y: h, shade: [1, 1] }),
+      const SG = modelsReady() && modelGeo(i % 3 === 2 ? 'stump_roundDetailed' : 'stump_round', { h, w: 0.85, colors: { woodBark: '#9a6a3e', woodInner: '#ecc98f' }, shade: [0.88, 1.12], smooth: 0.3 });
+      const g = merge([SG || cyl(0.3, 0.38, h, 9, '#9a6a3e', { shade: [0.85, 1.1] }), ...(SG ? [] : [cyl(0.3, 0.3, 0.03, 9, '#e2bf8a', { y: h, shade: [1, 1] })]),
         mossTuft(0.34, 0.05, 0.1, 1.1), mossTuft(-0.3, 0.05, -0.2, 0.9), blob(0.12, h + 0.04, 0.1, 0.1, '#6f9a45', { sy: 0.4, detail: 0, lump: 0.1, aw: 0, warm: false, shade: [1, 1] })]);
       place(g, x, z, r() * 6, -0.03);
     }
@@ -76,7 +79,17 @@ export function buildProps(scene) {
       rbox(0.45, 0.22, 0.45, 0.09, '#8ec7ff', -0.7, 0.16, 0.5, 0.4), rbox(0.45, 0.22, 0.45, 0.09, '#ffd96a', 0.8, 0.16, 0.55, -0.3), mossTuft(1.25, 0.05, 0.9, 1.2), mossTuft(-1.3, 0.05, -0.8, 1.3),
       cyl(0.28, 0.24, 0.3, 10, '#b58349', { x: 0.1, y: 0.05, z: -0.35, shade: [0.9, 1.1] }), box(0.6, 0.04, 0.5, '#fffaf0', 0.1, 0.36, -0.35)];
     for (let k = 0; k < 4; k++) parts.push(blob(-0.4 + k * 0.25, 0.1, 0.05 + (k % 2) * 0.1, 0.09, k % 2 ? '#e8465f' : '#9ad85a', { detail: 0, sy: 1, lump: 0, aw: 0, warm: false, shade: [1, 1] }));
-    const g = merge(parts); place(g, x, z, 0.4, 0); taken.push([x, z, 3.6]); }
+    const g = merge(parts); place(g, x, z, 0.4, 0); taken.push([x, z, 3.6]);
+    if (modelsReady()) { // low picket backdrop behind the blanket (hand-made CC0 fence model, each piece follows the ground)
+      const R0 = 4.3, N = 7;
+      for (let k = 0; k < N; k++) {
+        const a = Math.PI * (0.05 + 0.9 * k / (N - 1)) + 0.4 + Math.PI * 0.5, fx = x + Math.cos(a) * R0, fz = z + Math.sin(a) * R0;
+        if (!ok(fx, fz)) continue;
+        const f = modelGeo(k === 3 ? 'fence_gate' : 'fence_simple', { w: 1.75, colors: { wood: '#d9a066', woodDark: '#b9824c' }, shade: [0.85, 1.15], smooth: 0.15 });
+        if (!f) break; f.rotateY(-a - Math.PI / 2); bake(f); f.translate(fx, heightAt(fx, fz) - 0.04, fz); L.push(f);
+      }
+      taken.push([x, z, 5]);
+    } }
 
   const m = new THREE.Mesh(merge(L), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, emissive: '#2a3a18', emissiveIntensity: 0.12 }));
   m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
