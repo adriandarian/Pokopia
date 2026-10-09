@@ -76,16 +76,28 @@ export function buildAmbientLife(scene, state) {
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(1, 1, 1), pv = new THREE.Vector3();
 
   // --- butterflies ---
+  // One wing = a quad in the XZ plane (hinge at x=0) carrying an alpha-cut two-lobe wing texture, so it reads as a
+  // butterfly wing and never as a flat coloured slab. Colour is tinted per butterfly via the material colour.
   const wingG = new THREE.BufferGeometry();
-  wingG.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0, 0.35, 0, -0.2, 0.3, 0, 0.22, 0, 0, 0, 0.3, 0, 0.22, 0.05, 0, 0.3]), 3));
+  wingG.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -0.2, 0.35, 0, -0.2, 0.35, 0, 0.3, 0, 0, 0.3]), 3));
+  wingG.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]), 2));
+  wingG.setIndex([0, 2, 1, 0, 3, 2]);
   wingG.computeVertexNormals();
-  const bcols = ['#ffd24a', '#ff8fb8', '#8fd0ff', '#ffffff', '#c59bff'];
+  const wingTex = (() => {
+    const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128; const g = cv.getContext('2d');
+    const lobe = (cx, cy, rx, ry, rot) => { g.beginPath(); g.ellipse(cx, cy, rx, ry, rot, 0, Math.PI * 2); };
+    g.fillStyle = '#3a2a40'; lobe(54, 44, 52, 34, -0.35); g.fill(); lobe(46, 94, 34, 26, 0.3); g.fill(); // dark rim silhouette
+    g.fillStyle = '#ffffff'; lobe(54, 44, 46, 28, -0.35); g.fill(); lobe(46, 94, 28, 20, 0.3); g.fill(); // light body (tinted)
+    g.fillStyle = 'rgba(60,40,70,.55)'; for (const [x, y, r] of [[78, 34, 6], [60, 52, 5], [44, 92, 5]]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const bcols = ['#ffd24a', '#ff8fb8', '#8fd0ff', '#fff4d6', '#c59bff'];
   const flies = [];
   for (let i = 0; i < 16; i++) {
-    const mat = new THREE.MeshBasicMaterial({ color: bcols[i % 5], side: THREE.DoubleSide, fog: true });
+    const mat = new THREE.MeshBasicMaterial({ color: bcols[i % 5], map: wingTex, alphaTest: 0.5, side: THREE.DoubleSide, fog: true });
     const grp = new THREE.Group();
     const wl = new THREE.Mesh(wingG, mat), wr = new THREE.Mesh(wingG, mat);
-    wr.scale.x = -1; grp.add(wl, wr); grp.scale.setScalar(2.3);
+    wr.scale.x = -1; grp.add(wl, wr); grp.scale.setScalar(1.0);
     scene.add(grp);
     const a = rnd() * 6.28, r = 4 + rnd() * 30;
     flies.push({ grp, wl, wr, cx: Math.cos(a) * r, cz: Math.sin(a) * r, rad: 3 + rnd() * 6, sp: 0.2 + rnd() * 0.25, ph: rnd() * 6.28, fl: 14 + rnd() * 6, hh: 1 + rnd() * 1.5 });
@@ -194,7 +206,7 @@ export function buildAmbientLife(scene, state) {
         const y = Math.max(heightAt(x, z), 0) + f.hh + Math.sin(a * 3.1) * 0.5;
         const dx = x - f.grp.position.x, dz = z - f.grp.position.z;
         f.grp.position.set(x, y, z);
-        f.grp.scale.setScalar(2.3 * THREE.MathUtils.smoothstep(f.grp.position.distanceTo(camPos), 1.5, 4.5) + 1e-3);
+        f.grp.scale.setScalar(1.0 * THREE.MathUtils.smoothstep(f.grp.position.distanceTo(camPos), 1.5, 4.5) + 1e-3);
         if (dx * dx + dz * dz > 1e-8) f.grp.rotation.y = Math.atan2(dx, dz) - Math.PI / 2 + Math.PI / 2;
         const fl = Math.sin(t * f.fl + f.ph) * 0.9 + 0.35;
         f.wl.rotation.z = fl; f.wr.rotation.z = -fl;
