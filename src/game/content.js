@@ -62,8 +62,8 @@ export const tierOf = (lvl) => (lvl <= 0 ? 0 : lvl <= 2 ? 1 : lvl <= 4 ? 2 : 3);
 
 // ---- daily events keyed by day number. Always gentle bonuses, never scarcity. ----
 export const EVENTS = [
-  { id: 'petalrain', icon: '🌸', name: 'Petal Rain Day', blurb: 'Petals drift down from the sky. Every gem is worth +1 petal today!' },
-  { id: 'berry', icon: '🍓', name: 'Berry Bonanza', blurb: 'The berries are extra juicy. Berries give +2 petals today!' },
+  { id: 'petalrain', icon: '🌸', name: 'Petal Rain Day', blurb: 'Petals drift down from the sky. Gems are worth a little extra today!' },
+  { id: 'berry', icon: '🍓', name: 'Berry Bonanza', blurb: 'The berries are extra juicy. Berries give +1 extra petal today!' },
   { id: 'firefly', icon: '✨', name: 'Firefly Night', blurb: 'Fireflies glow after dark. A cosy bonus quest is waiting.' },
   { id: 'cuddle', icon: '💞', name: 'Cuddle Day', blurb: 'Friends feel extra close. Friendship grows 1.5x faster today!' },
   { id: 'picnic', icon: '🧺', name: 'Picnic Day', blurb: 'Everyone brought snacks. Your daily gift is doubled!' },
@@ -71,8 +71,8 @@ export const EVENTS = [
 export const eventFor = (day) => EVENTS[(Math.max(1, day) - 1) % EVENTS.length];
 
 // ---- economy ----
-export const GEM_VALUE = { pink: 1, blue: 1, green: 2, yellow: 3 };
-export const COMBO_BONUS = { 5: 3, 10: 6, 15: 10 }; // collecting gems within 2s of each other
+export const GEM_VALUE = { pink: 1, blue: 1, green: 1.5, yellow: 2 };
+export const COMBO_BONUS = { 5: 2, 10: 4, 15: 6 }; // collecting gems within 2s of each other
 
 // ---- decor ----
 // cat: Furniture | Garden | Lights | Structures | Paths. charm = Island Charm. kind: 'solid' | 'flat' | 'kit' (modular house piece).
@@ -108,11 +108,12 @@ export const DECOR = [
 ];
 export const PLUSH_COLORS = { Puffle: '#ffa9cf', Bloop: '#86dcff', Sunny: '#ffe36e', Mochi: '#c9a9ff', Leafy: '#a6e585', Bobo: '#ffb766', Pengu: '#5fc4cf', Fluff: '#fff7fb' };
 for (const sp of Object.keys(PLUSH_COLORS)) DECOR.push({ id: 'd_plush_' + sp, name: `${sp} Plushie`, icon: '🧸', price: 0, charm: 5, cat: 'Furniture', kind: 'solid', gift: `${sp} best friends`, species: sp });
+for (const d of DECOR) if (d.price > 100) d.price *= 2; // pricier big items keep spending meaningful
 export const DECOR_BY_ID = Object.fromEntries(DECOR.map(d => [d.id, d]));
 
 // Island Charm milestones (total charm of placed decor).
 export const CHARM_MS = [
-  { at: 10, petals: 20, text: 'A cosy corner' }, { at: 25, petals: 40, text: 'A lovely little garden' },
-  { at: 50, petals: 80, text: 'A charming island', item: 'tr_leaf' }, { at: 100, petals: 150, text: 'A dreamy island paradise' },
-  { at: 200, petals: 300, text: 'The most charming island ever', item: 'hat_halo' },
+  { at: 10, petals: 12, text: 'A cosy corner' }, { at: 25, petals: 25, text: 'A lovely little garden' },
+  { at: 50, petals: 50, text: 'A charming island', item: 'tr_leaf' }, { at: 100, petals: 90, text: 'A dreamy island paradise' },
+  { at: 200, petals: 180, text: 'The most charming island ever', item: 'hat_halo' },
 ];

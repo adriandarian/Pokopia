@@ -8,7 +8,7 @@ const defaults = () => ({
   petals: 0, totalGems: 0, day: 1, lastDate: todayStr(), lastGift: '', playedSeconds: 0,
   discovered: {}, befriended: {}, bond: {}, inv: {}, milestones: {},
   rel: {}, wish: {}, wishDone: 0, daily: { date: '', gifts: {}, near: {}, visit: {}, emote: {}, together: {} },
-  decorInv: {}, decor: [], charmMs: {}, eventSeen: 0, mem: {}, hang: null, hints: {}, featuredDay: 0, senseAt: 0, lastWelcome: 0, placedTypes: {},
+  decorInv: {}, decor: [], charmMs: {}, eventSeen: 0, mem: {}, hang: null, hints: {}, eventToast: 0, islandLog: [], featuredDay: 0, senseAt: 0, lastWelcome: 0, placedTypes: {},
   owned: [...DEFAULT_OWNED], equipped: { ...DEFAULT_EQUIP },
   quests: null, questSet: 0, tutorial: 0,
   settings: { volume: 0.8, music: 0.5, quality: 'auto', reduceMotion: false, touch: 'auto', textSize: 1, mute: false, interactKey: 'KeyE' },
@@ -16,7 +16,9 @@ const defaults = () => ({
 
 export const state = defaults();
 
+let loaded = false; // never write a half-booted default state over a real save (e.g. a reload during startup)
 export function load() {
+  loaded = true;
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (raw) {
@@ -35,7 +37,7 @@ export function load() {
   if (state.lastDate !== todayStr()) { state.day += 1; state.lastDate = todayStr(); state.quests = null; save(); emit('day', { day: state.day }); }
 }
 let timer = 0;
-export function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
+export function save() { if (!loaded) return; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
 export function saveSoon() { clearTimeout(timer); timer = setTimeout(save, 400); }
 export function resetSave() { try { localStorage.removeItem(KEY); } catch {} location.reload(); }
 

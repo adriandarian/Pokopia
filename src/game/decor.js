@@ -7,6 +7,7 @@ import { state, saveSoon, addPetals } from './state.js';
 import { DECOR, DECOR_BY_ID, PLUSH_COLORS, CHARM_MS } from './content.js';
 import { WARDROBE } from './data.js';
 import { emit, on } from './events.js';
+import { isTouchDevice } from './touch.js';
 import { getFX, world } from '../chars/fx.js';
 import { registerPreload, firstMesh, hasModel } from '../assets/loader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -176,6 +177,23 @@ const NEW = {
 const TINTS = ['#ffffff', '#ffc9dc', '#c9e4ff', '#cff3c9', '#fff0a8', '#dccbff'];
 export const TINT_COUNT = TINTS.length, SIZES = [0.8, 1, 1.3];
 const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+// Soft additive halo for lamps / lanterns: a camera-facing sprite on each glow bulb, faded in by the sky's night factor (one shared material).
+let haloTex = null;
+const haloMat = new THREE.SpriteMaterial({ color: '#ffd98a', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false, opacity: 0 });
+function haloTexture() {
+  if (haloTex) return haloTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'), g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.18, 'rgba(255,240,200,.75)'); g.addColorStop(0.5, 'rgba(255,214,140,.22)'); g.addColorStop(1, 'rgba(255,200,120,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  haloTex = new THREE.CanvasTexture(c); haloTex.colorSpace = THREE.SRGBColorSpace; haloMat.map = haloTex; haloMat.needsUpdate = true; return haloTex;
+}
+function addHalo(inner, glowGeo, k) {
+  haloTexture(); if (!glowGeo.boundingSphere) glowGeo.computeBoundingSphere();
+  const sp = new THREE.Sprite(haloMat), bs = glowGeo.boundingSphere;
+  sp.position.copy(bs.center); sp.scale.setScalar(Math.max(1.5, bs.radius * 11) / k); sp.renderOrder = 4; sp.raycast = () => {};
+  sp.onBeforeRender = (r, sc) => { const sk = sc.userData.sky; haloMat.opacity = sk ? Math.min(1, sk.night + 0.55 * sk.dusk) : 0; };
+  inner.add(sp); return sp;
+}
 const templates = new Map();
 function template(id) {
   if (templates.has(id)) return templates.get(id);
@@ -196,14 +214,17 @@ function makeMesh(id, ghost = false, s = 1, v = 0) {
   setCaster(m, 2, !ghost); if (ghost) m.renderOrder = 10; else outline(m, 0.02, '#3b2a3a'); inner.add(m);
   if (t.glow) { const gm = new THREE.Mesh(t.glow, glowMat); if (ghost) { gm.material = ghostMat(); gm.renderOrder = 10; } inner.add(gm); }
   if (t.spin) { const sg = new THREE.Group(); sg.position.set(...t.spin.origin); const sm = new THREE.Mesh(t.spin.geo, ghost ? ghostMat() : toon(TINTS[v % TINTS.length], { vc: true, rimTint: true })); if (ghost) sm.renderOrder = 10; sg.add(sm); inner.add(sg); g.userData.spin = sg; }
-  inner.scale.setScalar((kit ? 1 : (SCALE[id] || 1.4)) * (kit ? 1 : (SIZES[s] ?? 1)));
+  const k0 = (kit ? 1 : (SCALE[id] || 1.4)) * (kit ? 1 : (SIZES[s] ?? 1));
+  inner.scale.setScalar(k0);
+  if (t.glow && !ghost) addHalo(inner, t.glow, k0);
   return g;
 }
 const footprint = (id) => { const k = DECOR_BY_ID[id].kind; return k === 'kit' ? 1.2 : (hasModel('dc_wall') && FOOT[id]) || Math.max(0.7, 0.55 * (SCALE_OLD[id] || 1.4)); };
 
 // ---------- world state ----------
 let scene, player, placed = [], ghost = null, ring = null, beam = null, mode = null, fx;
-const LIMIT = 220;
+const LIMIT = 220, _dir = new THREE.Vector3(), undoStack = [];
+let edgeMark = null;
 export const charm = () => state.decor.reduce((a, d) => a + (DECOR_BY_ID[d.id]?.charm || 0), 0);
 export const decorCount = () => state.decor.length;
 export const isPlacing = () => !!mode;
@@ -270,19 +291,33 @@ export function initDecor(pl) {
   for (const d of state.decor) if (DECOR_BY_ID[d.id]) spawn(d);
   ring = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#7dffb0', transparent: true, opacity: 0.95, depthWrite: false, depthTest: false })); ring.visible = false; ring.renderOrder = 11; scene.add(ring);
   beam = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 7, 8), new THREE.MeshBasicMaterial({ color: '#7dffb0', transparent: true, opacity: 0.55, depthWrite: false, depthTest: false })); beam.visible = false; beam.renderOrder = 11; scene.add(beam);
+  edgeMark = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.12, 0.14), new THREE.MeshBasicMaterial({ color: '#ffe36e', transparent: true, opacity: 0.9, depthTest: false })); edgeMark.visible = false; edgeMark.renderOrder = 12; scene.add(edgeMark);
   syncClearings(); checkCharm();
 }
 export function tickDecor(dt, t) {
   for (const p of placed) if (p.m.userData.spin) p.m.userData.spin.rotation.z += dt * 0.8;
   if (!mode) return;
   const pos = player.mesh.position, ry = player.mesh.rotation.y, def = DECOR_BY_ID[mode.id];
-  const dist = 3.2 + (def.kind === 'kit' ? 0 : Math.max(0, footprint(mode.id) * (SIZES[mode.s] ?? 1) - 1.2) * 0.9);
-  const [x, z] = snapPos(pos.x + Math.sin(ry) * dist, pos.z + Math.cos(ry) * dist, mode.id, mode.rot);
+  const touch = isTouchDevice(), cam = window.__game?.camera;
+  let dist = (touch ? 3 : 3.2) + (def.kind === 'kit' ? 0 : Math.max(0, footprint(mode.id) * (SIZES[mode.s] ?? 1) - 1.2) * 0.9);
+  // aim point: on touch it follows the camera (always up-screen, away from the joystick); on desktop the hero's facing
+  let fx_ = Math.sin(ry), fz_ = Math.cos(ry);
+  if (touch && cam) { cam.getWorldDirection(_dir); const l = Math.hypot(_dir.x, _dir.z) || 1; fx_ = _dir.x / l; fz_ = _dir.z / l; }
+  const nu = mode.nudge || (mode.nudge = { x: 0, z: 0 });
+  let [x, z] = snapPos(pos.x + fx_ * dist + nu.x, pos.z + fz_ * dist + nu.z, mode.id, mode.rot);
+  // edge snap: walls/doors lock onto the nearest floor edge within 1.5 m (and turn to match it)
+  mode.edge = null;
+  if (def.kind === 'kit' && def.layer === 1) {
+    const ax = pos.x + fx_ * dist + nu.x, az = pos.z + fz_ * dist + nu.z; let best = null, bd = 1.5;
+    for (const f of state.decor) if (f.id === 'b_floor') for (const [ex, ez, along] of [[f.x + 1, f.z, 'z'], [f.x - 1, f.z, 'z'], [f.x, f.z + 1, 'x'], [f.x, f.z - 1, 'x']]) { const dd = Math.hypot(ex - ax, ez - az); if (dd < bd) { bd = dd; best = { x: ex, z: ez, along }; } }
+    if (best) { x = best.x; z = best.z; mode.edge = best; const want = best.along === 'x' ? 0 : 2; if (mode.rot % 4 !== want) mode.rot = (mode.rot + 2) % 8; }
+  }
   const chk = check(x, z, mode.id, mode.rot), ok = chk.ok, y = (def.kind === 'kit' ? kitLevel(x, z, mode.moving ?? -1) : heightAt(x, z)) + (def.elev || 0);
   ghost.position.set(x, Math.max(y, 0), z); ghost.rotation.y = mode.rot * Math.PI / 4; ghost.userData.spin?.rotateZ(dt);
   const gy = Math.max(def.kind === 'kit' ? y - (def.elev || 0) : heightAt(x, z), 0), col = ok ? '#7dffb0' : '#ff7a7a', fp = footprint(mode.id) * (def.kind === 'kit' ? 1 : (SIZES[mode.s] ?? 1));
   ring.position.set(x, gy + 0.08, z); ring.material.color.set(col); ring.scale.setScalar(fp * (1 + Math.sin(t * 6) * 0.04));
   beam.position.set(x, gy + 3.5, z); beam.material.color.set(col);
+  if (edgeMark) { edgeMark.visible = !!mode.edge; if (mode.edge) { edgeMark.position.set(x, gy + 0.25, z); edgeMark.rotation.y = mode.edge.along === 'x' ? 0 : Math.PI / 2; edgeMark.scale.y = 1 + Math.sin(t * 8) * 0.25; } }
   mode.pos = { x, z, y: def.kind === 'kit' ? y - (def.elev || 0) : null }; mode.ok = ok; mode.replace = chk.replace;
   const reason = ok ? '' : chk.reason; if (reason !== mode.reason) { mode.reason = reason; emit('placereason', { text: reason }); }
   // Line mode: walking lays a row of pieces
@@ -302,7 +337,7 @@ export function rotatePlacing() { if (!mode) return; const kit = DECOR_BY_ID[mod
 export function sizePlacing() { if (!mode || DECOR_BY_ID[mode.id].kind === 'kit') return; mode.s = (mode.s + 1) % SIZES.length; emit('toast', { icon: '📏', text: ['Small', 'Normal', 'Large'][mode.s], kind: 'info' }); rebuildGhost(); }
 export function tintPlacing() { if (!mode) return; mode.v = (mode.v + 1) % TINTS.length; rebuildGhost(); emit('sfx', { name: 'click' }); }
 export function linePlacing() { if (!mode || !DECOR_BY_ID[mode.id].line) return; mode.line = !mode.line; mode.lastCell = null; emit('toast', { icon: '↔️', text: mode.line ? 'Line mode: walk to lay a row' : 'Line mode off', kind: 'info' }); emit('placing', modeInfo()); }
-function endMode() { if (ghost) { scene.remove(ghost); ghost = null; } if (ring) ring.visible = false; if (beam) beam.visible = false; mode = null; emit('placing', { on: false }); }
+function endMode() { if (edgeMark) edgeMark.visible = false; if (ghost) { scene.remove(ghost); ghost = null; } if (ring) ring.visible = false; if (beam) beam.visible = false; mode = null; emit('placing', { on: false }); }
 export function cancelPlacing() {
   if (!mode) return;
   if (mode.moving != null) placed[mode.moving].m.visible = true;
@@ -316,9 +351,9 @@ function doPlace(quiet) {
   } else {
     if (!(state.decorInv[id] > 0)) return false;
     if (mode.replace != null) storeIndex(mode.replace);
-    state.decorInv[id]--; const d = { id, x, z, r: mode.rot, s: mode.s, v: mode.v }; if (isKit(id)) d.y = kitLevel(x, z); state.decor.push(d); spawn(d);
+    state.decorInv[id]--; const d = { id, x, z, r: mode.rot, s: mode.s, v: mode.v }; if (isKit(id)) d.y = kitLevel(x, z); state.decor.push(d); spawn(d); undoStack.push(d); if (undoStack.length > 20) undoStack.shift();
     emit('place', { id }); emit('inventory');
-    if (!state.placedTypes[id]) { state.placedTypes[id] = 1; addPetals(5); emit('toast', { icon: '✨', text: `First ${DECOR_BY_ID[id].name} placed! +5 🌸`, kind: 'win' }); }
+    if (!state.placedTypes[id]) { state.placedTypes[id] = 1; (state.islandLog ||= []).push({ t: `First ${DECOR_BY_ID[id].name} placed`, d: new Date().toISOString().slice(0, 10) }); if (state.islandLog.length > 10) state.islandLog.shift(); addPetals(3); emit('toast', { icon: '✨', text: `First ${DECOR_BY_ID[id].name} placed! +3 🌸`, kind: 'win' }); }
   }
   const y = baseY(x, z);
   fx.burst(new THREE.Vector3(x, y + 0.6, z), '#fff6a8', quiet ? 6 : 18); if (!quiet) fx.hearts(new THREE.Vector3(x, y + 1.4, z), 3);
@@ -354,10 +389,28 @@ function checkCharm() {
   for (const m of CHARM_MS) {
     if (c < m.at || state.charmMs[m.at]) continue;
     state.charmMs[m.at] = 1;
+    (state.islandLog ||= []).push({ t: `Island Charm ${m.at}: ${m.text}`, d: new Date().toISOString().slice(0, 10) }); if (state.islandLog.length > 10) state.islandLog.shift();
     addPetals(m.petals); if (m.item && !state.owned.includes(m.item)) state.owned.push(m.item);
     const it = m.item && WARDROBE.find(w => w.id === m.item);
     emit('toast', { icon: '🏡', text: `Island Charm ${m.at}: ${m.text}! +${m.petals} 🌸${it ? ` · ${it.icon} ${it.name}` : ''}`, kind: 'win' });
   }
   saveSoon();
 }
+// Nudge the aim point one step (camera-relative: up/down/left/right on screen; 0,0 resets).
+export function nudgePlacing(dx, dy) {
+  if (!mode) return; const step = DECOR_BY_ID[mode.id].kind === 'kit' ? 2 : 0.5, nu = mode.nudge || (mode.nudge = { x: 0, z: 0 });
+  if (!dx && !dy) { nu.x = nu.z = 0; return; }
+  const cam = window.__game?.camera, ry = player.mesh.rotation.y; let fx = Math.sin(ry), fz = Math.cos(ry);
+  if (cam) { cam.getWorldDirection(_dir); fx = _dir.x; fz = _dir.z; }
+  // forward axis snapped to the dominant world axis so nudges always move exactly one grid cell
+  let ax, az; if (Math.abs(fx) > Math.abs(fz)) { ax = Math.sign(fx); az = 0; } else { ax = 0; az = Math.sign(fz) || 1; }
+  nu.x += (ax * -dy - az * dx) * step; nu.z += (az * -dy + ax * dx) * step;
+  emit('sfx', { name: 'click' });
+}
+// Undo the last new placement (returns it to your bag).
+export function undoPlace() {
+  while (undoStack.length) { const d = undoStack.pop(), i = state.decor.indexOf(d); if (i < 0) continue; storeIndex(i); emit('undo', { id: d.id, left: undoStack.length }); emit('toast', { icon: '↶', text: `Put ${DECOR_BY_ID[d.id].name} back in your bag`, kind: 'info' }); return true; }
+  return false;
+}
+export const canUndo = () => undoStack.some(d => state.decor.includes(d));
 export function nextCharm() { return CHARM_MS.find(m => !state.charmMs[m.at]); }

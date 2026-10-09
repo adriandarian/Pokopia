@@ -113,7 +113,7 @@ export function setTier(t, opts = {}) {
   const prev = setting; setting = t; write(t);
   state.settings.quality = t; saveSoon();
   if (t === 'auto') {
-    resetAuto(); if (prev !== 'auto' || opts.force) setEffective(guessTier(), 'auto');
+    resetAuto(); if (prev !== 'auto' || opts.force) setEffective(readAuto() || guessTier(), 'auto');
   } else setEffective(t, 'manual');
 }
 
@@ -156,61 +156,71 @@ export function guessTier() {
 }
 
 // ------------------------------------------------------------------ adaptive controller (auto only)
-const WINDOW_MS = 3000, WARMUP_MS = 4000, MAX_CHANGES = 3;
-let accT = 0, accN = 0, bad = 0, good = 0, bootT = 0, settleUntil = 0, dirty = false;
+// Conservative on purpose: a healthy machine must never change tier. Windows are judged by the MEDIAN frame time (one-off hitches do not
+// count), the first seconds (asset upload / shader compile) are ignored, any big hitch voids its window and the next one, and stepping down
+// needs 3 consecutive bad windows. The tier Auto ends up on is remembered, so the next visit starts there (and may still step up).
+const WINDOW_MS = 3000, WARMUP_MS = 8000, MAX_CHANGES = 3, SPIKE_MS = 200, DOWN_FPS = 40, UP_FPS = 57, DOWN_WINDOWS = 3, UP_WINDOWS = 4;
+const AUTO_KEY = 'pokopia.quality.auto';
+let samples = [], accT = 0, bad = 0, good = 0, bootT = 0, settleUntil = 0, voidWindows = 0, dirty = false, stable = 0, started = null;
 let ceiling = 'high';        // highest tier auto may use again (lowered when a step up was followed by a step down)
 let lastUpFrom = null;
-const hist = [];             // window log for QA: {t, fps, tier}
+const hist = [];             // window log for QA: {t, fps, tier, valid}
 
-function resetAuto() { accT = accN = bad = good = 0; dirty = false; }
-function settle() { resetAuto(); settleUntil = performance.now() + 1500; } // a tier change recompiles shaders; ignore the next frames
+const readAuto = () => { try { const v = localStorage.getItem(AUTO_KEY); return TIERS.includes(v) ? v : null; } catch { return null; } };
+const writeAuto = (v) => { try { localStorage.setItem(AUTO_KEY, v); } catch { /* private mode etc. */ } };
 
-document.addEventListener?.('visibilitychange', () => { dirty = true; accT = accN = 0; });
+function resetAuto() { samples = []; accT = 0; bad = good = stable = 0; dirty = false; }
+function settle() { resetAuto(); settleUntil = performance.now() + 3500; voidWindows = 1; } // a tier change recompiles shaders: ignore the next window or two
+
+document.addEventListener?.('visibilitychange', () => { dirty = true; samples = []; accT = 0; });
 
 export function frame(dtMs) {
   if (!inited) return;
   const now = performance.now();
   if (!bootT) bootT = now;
   if (setting !== 'auto' || document.hidden) { dirty = true; return; }
-  if (now - bootT < WARMUP_MS || now < settleUntil) { accT = accN = 0; return; }
-  if (dtMs > 1000) { dirty = true; }            // tab was throttled / device slept: do not judge this window
-  accT += dtMs; accN++;
+  if (now - bootT < WARMUP_MS || now < settleUntil) { samples = []; accT = 0; return; }
+  if (dtMs > SPIKE_MS) { samples = []; accT = 0; voidWindows = 1; return; }   // hitch / compile / throttled tab: void this window and the next
+  samples.push(dtMs); accT += dtMs;
   if (accT < WINDOW_MS) return;
-  const fps = accN / (accT / 1000), valid = !dirty;
-  accT = accN = 0; dirty = false;
+  const sorted = samples.slice().sort((x, y) => x - y), med = sorted[sorted.length >> 1], fps = 1000 / med;
+  const valid = !dirty && voidWindows === 0;
+  samples = []; accT = 0; dirty = false; if (voidWindows > 0) voidWindows--;
   hist.push({ t: Math.round(now - bootT), fps: +fps.toFixed(1), tier: effective, valid }); if (hist.length > 40) hist.shift();
   if (!valid) return;
-  if (fps < 45) { bad++; good = 0; } else if (fps > 57) { good++; bad = 0; } else { bad = 0; good = 0; }
+  if (fps < DOWN_FPS) { bad++; good = 0; stable = 0; } else if (fps > UP_FPS) { good++; bad = 0; stable++; } else { bad = 0; good = 0; stable++; }
+  if (stable >= 3 && readAuto() !== effective) writeAuto(effective);   // healthy for ~9 s: this is a good tier for this device
   if (changes >= MAX_CHANGES) return;
   // a step UP needs one change left in reserve, so a failed step up can always be reverted (never stuck on a tier that is too slow)
-  if (bad >= 2 && rank[effective] > 0) {
+  if (bad >= DOWN_WINDOWS && rank[effective] > 0) {
     // if we just stepped UP and it did not hold, the higher tier is not sustainable here: remember that
     if (lastUpFrom !== null && rank[effective] > rank[lastUpFrom]) ceiling = lastUpFrom;
-    stepTo(TIERS[rank[effective] - 1], 'down', fps);
-  } else if (good >= 4 && rank[effective] < rank[ceiling] && now - lastStepDown > 60000 && changes <= MAX_CHANGES - 2) {
+    stepTo(TIERS[rank[effective] - 1], 'down');
+  } else if (good >= UP_WINDOWS && rank[effective] < rank[ceiling] && now - lastStepDown > 60000 && changes <= MAX_CHANGES - 2) {
     lastUpFrom = effective;
-    stepTo(TIERS[rank[effective] + 1], 'up', fps);
+    stepTo(TIERS[rank[effective] + 1], 'up');
   }
 }
-function stepTo(t, dir, fps) {
+function stepTo(t, dir) {
   changes++; if (dir === 'down') lastStepDown = performance.now();
   setEffective(t, 'auto-' + dir);
-  showToast(dir, t, fps);
+  writeAuto(t);
+  if (dir === 'down') showToast(t);   // only a real mid-session slowdown is announced, once per session; step-ups and start-tier decisions are silent
 }
 
 // ------------------------------------------------------------------ toast
-let toastEl = null, toastTimer = 0;
-function showToast(dir, t) {
-  if (typeof document === 'undefined') return;
-  if (toastEl) toastEl.remove();
+let toastEl = null, toastTimer = 0, toastShown = false;
+function showToast(t) {
+  if (typeof document === 'undefined' || toastShown) return;
+  toastShown = true;
   const el = document.createElement('div');
   el.className = 'qtoast'; el.setAttribute('role', 'status');
-  el.innerHTML = `<span class="qt-ico">${dir === 'down' ? '🍃' : '✨'}</span><span class="qt-tx"><b>Graphics adjusted for smoother play</b><small>Now: ${t[0].toUpperCase() + t.slice(1)}. You can change this in Settings.</small></span><button class="qt-set" type="button">Settings</button><button class="qt-x" type="button" aria-label="Dismiss">×</button>`;
+  el.innerHTML = `<span class="qt-ico">🍃</span><span class="qt-tx"><b>Smoother graphics (${t[0].toUpperCase() + t.slice(1)})</b></span><button class="qt-set" type="button">Settings</button><button class="qt-x" type="button" aria-label="Dismiss">×</button>`;
   const gone = () => { clearTimeout(toastTimer); el.classList.add('out'); setTimeout(() => el.remove(), 400); if (toastEl === el) toastEl = null; };
   el.querySelector('.qt-x').onclick = gone;
   el.querySelector('.qt-set').onclick = () => { emit('ui:request', { panel: 'settings' }); gone(); };
   (document.getElementById('ui-root') || document.body).appendChild(el);
-  toastEl = el; toastTimer = setTimeout(gone, 9000);
+  toastEl = el; toastTimer = setTimeout(gone, 4500);
 }
 
 // ------------------------------------------------------------------ init
@@ -219,9 +229,12 @@ export function initQuality(renderer) {
   if (inited) return;
   if (renderer) detectGpu(renderer.getContext());
   setting = read();
-  effective = setting === 'auto' ? guessTier() : setting;
+  // Auto: start on the tier remembered from the last session (a silent start-tier decision, never a toast), else the heuristic guess
+  started = setting === 'auto' ? (readAuto() || guessTier()) : setting;
+  try { const q = new URLSearchParams(location.search).get('qstart'); if (setting === 'auto' && TIERS.includes(q)) started = q; } catch { /* ignore */ }
+  effective = started;
   inited = true; settle();
-  if (typeof window !== 'undefined') window.__quality = { getTier, getEffectiveTier, setTier, profile, gpu, guessTier, history: hist, state: () => ({ setting, effective, changes, ceiling, bad, good, reason }), PROFILES };
+  if (typeof window !== 'undefined') window.__quality = { getTier, getEffectiveTier, setTier, profile, gpu, guessTier, history: hist, state: () => ({ setting, effective, started, remembered: readAuto(), changes, ceiling, bad, good, reason }), PROFILES };
   on('settings', (e) => { if (e && e.quality && e.quality !== setting && (e.quality === 'auto' || TIERS.includes(e.quality))) setTier(e.quality); });
   notify({ reason: 'init' });
 }

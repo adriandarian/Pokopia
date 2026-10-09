@@ -436,3 +436,66 @@ body.ts-big #objective{left:14px}
 .qtoast .qt-set{flex:none;border:0;border-radius:999px;padding:8px 14px;font-weight:800;font-size:14px;color:#fff;background:var(--grape);min-height:40px}
 .qtoast .qt-x{flex:none;border:0;background:transparent;font-size:26px;line-height:1;color:var(--ink2);width:40px;height:40px;border-radius:50%}
 @media (max-width:640px){.qtoast{bottom:96px}}
+
+/* ======== fix round 3b ======== */
+/* title appears only after the loader is gone (no crossfade ghosting) */
+body:not(.loaded) #title{opacity:0;visibility:hidden;transition:none}
+body.loaded #title{transition:opacity .6s ease .05s,transform .7s}
+body.loaded #title.leave{opacity:0}
+
+/* Sparkle Sense button with cooldown ring */
+.round.sense{width:54px;height:54px;background:#ffe27a;box-shadow:0 5px 0 var(--sun-d),0 10px 18px rgba(90,60,0,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;--p:100;overflow:visible}
+.round.sense .si{font-size:20px;line-height:1}
+.round.sense .sl{font-size:10px;font-weight:900;line-height:1.1;color:#6b4a00;letter-spacing:.2px}
+.round.sense::before{content:"";position:absolute;inset:-7px;border-radius:50%;background:conic-gradient(var(--mint-d) calc(var(--p) * 1%),rgba(255,255,255,.55) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));pointer-events:none}
+.round.sense.cool{opacity:1;filter:saturate(.55)}
+.round.sense.cool::after{content:none}
+#hud-right .row2{align-items:center}
+@media(max-width:640px){.round.sense{width:40px;height:40px}.round.sense .si{font-size:15px}.round.sense .sl{font-size:8.5px}.round.sense::before{inset:-5px}}
+
+/* hearts in the journal */
+.hearts{display:flex;justify-content:center;gap:2px;margin-top:4px;font-style:normal}
+.hearts i{font-style:normal;font-size:21px;line-height:1;color:#e6d9ee}
+.hearts i.on{color:#ff5c9a}
+.hearts i.part{background:linear-gradient(90deg,#ff5c9a var(--f),#e6d9ee var(--f));-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* shop cards: aligned, bottom-pinned actions; auto-height panels; breathing room before the tip */
+.panel.tall{height:auto;min-height:0}
+.panel.tall .body{display:flex;flex-direction:column}
+.card.dc{padding-bottom:12px}
+.card.dc .nm{min-height:2.4em;display:flex;align-items:center;justify-content:center;line-height:1.15}
+.card.dc .meta{min-height:2.6em}
+.card.dc .acts{margin-top:auto;padding-top:10px;justify-content:flex-end}
+.panel .body>.sub:last-child{margin-top:18px;margin-bottom:4px;padding:10px 14px;background:#f6effb;border-radius:14px}
+.grid{align-items:stretch}
+.grid+.sub{margin-top:18px}
+
+/* undo + nudge */
+#undo{position:absolute;left:14px;bottom:150px;z-index:8;min-height:44px;padding:6px 16px;font-size:16px}
+body.touch-ui #undo{bottom:230px;left:14px}
+.nudge{position:absolute;right:max(14px,env(safe-area-inset-right));bottom:max(26px,env(safe-area-inset-bottom));z-index:9;display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,44px);gap:4px;margin-top:2px;pointer-events:none}
+.nudge button{pointer-events:auto;border:3px solid #fff;border-radius:14px;background:rgba(255,255,255,.95);color:var(--ink);font-weight:900;font-size:18px;box-shadow:0 3px 0 rgba(120,70,140,.3);padding:0;touch-action:manipulation}
+.nudge button:active{transform:translateY(2px)}
+#nd-u{grid-column:2;grid-row:1}#nd-l{grid-column:1;grid-row:2}#nd-c{grid-column:2;grid-row:2;font-size:11px}#nd-r{grid-column:3;grid-row:2}#nd-d{grid-column:2;grid-row:3}
+
+@media(max-width:640px){
+  /* hint = compact single-line chip */
+  #objective.next{left:10px;right:auto;width:fit-content;max-width:calc(100vw - 70px);padding:4px 12px;border-radius:999px;border-width:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 3px 0 var(--sun-d)}
+  #objective.next b{display:inline;font-size:13px}
+  #objective.next small{display:none}
+  /* placement: nudge pad sits bottom-right above jump, bar stays top */
+  .nudge{right:10px;bottom:24px;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,42px)}
+  body.touch-ui #undo{bottom:210px}
+  /* Huge text: slim sheet header, stacking quest cards */
+  body.ts-big .panel header{padding:6px 10px 6px 16px;zoom:.72}
+  body.ts-big .panel .body{padding:10px 12px 16px}
+  body.ts-big .qcard{flex-wrap:nowrap;gap:10px;padding:10px 12px;margin-bottom:10px;align-items:center}
+  body.ts-big .qcard .qi{width:40px;height:40px;font-size:22px}
+  body.ts-big .qcard .mid{flex:1 1 0;min-width:0}
+  body.ts-big .qcard .rw,body.ts-big .qcard>.btn{width:auto;min-width:64px;margin-left:0}
+  body.ts-big .goals{font-size:13px;padding:8px 12px;margin-bottom:8px}
+  body.ts-big .goals span:nth-of-type(n+3),body.ts-big .body>.feat{display:none}
+  body.ts-big .body>.sub{font-size:13px;margin-bottom:8px}
+  body.ts-big .qcard h3{font-size:16px}
+  body.ts-big .qcard p{font-size:13px;margin:1px 0 5px}
+}

@@ -38,14 +38,18 @@ export function buildProps(scene) {
   // fallen mossy log with mushrooms
   { const x = -17, z = -9;
     const LG = false && modelGeo('log_large', { w: 3.4, colors: { woodBark: '#7f5632', woodInner: '#e6c48e' }, shade: [0.85, 1.12], smooth: 0.3 }); if (LG) LG.translate(1.7, 0, 0);
-    const parts = [LG || cyl(0.3, 0.34, 3.4, 9, '#6f4a2b', { tiltZ: Math.PI / 2, shade: [0.8, 1.12], x: 1.7, y: 0.32 }),
+    const parts = [LG || prep(new THREE.CylinderGeometry(0.3, 0.34, 3.4, 14, 10).rotateZ(Math.PI / 2).translate(1.7, 0.3, 0), '#6f4a2b', 0, [0.8, 1.12], 0.04),
       mossTuft(0.8, 0.62, -0.1, 1.3), mossTuft(1.2, 0.6, 0.15, 1), mossTuft(2.3, 0.6, 0, 1.2), mossTuft(0.1, 0.1, 0.4, 1.3), mossTuft(1.9, 0.08, -0.4, 1.4), mossTuft(3.1, 0.1, 0.35, 1.1),
       blob(0.2, 0.6, 0, 0.3, '#6f9a45', { sy: 0.4, detail: 1, lump: 0.2, aw: 0, warm: false, shade: [1, 1.1] }),
       blob(1.6, 0.62, 0.05, 0.26, '#7fa84c', { sy: 0.4, detail: 1, lump: 0.2, aw: 0, warm: false, shade: [1, 1.1] }),
       blob(2.2, 0.35, 0.3, 0.1, '#e0453c', { detail: 0, sy: 0.7, lump: 0, aw: 0, warm: false, shade: [1, 1] }),
       blob(2.4, 0.33, 0.2, 0.08, '#e0453c', { detail: 0, sy: 0.7, lump: 0, aw: 0, warm: false, shade: [1, 1] }),
       ...(LG ? [] : [blob(3.45, 0.32, 0, 0.3, '#e2b97a', { sy: 0.1, detail: 0, lump: 0, aw: 0, warm: false, shade: [1, 1] })])];
-    const g = merge(parts); g.rotateZ(0); place(g, x, z, 0.5, -0.02); taken.push([x, z, 3.0]); }
+    const g = merge(parts); bake(g); g.scale(1.4, 1.4, 1.4); g.rotateY(0.5);
+    // ground it: every vertex follows the terrain height under it (the log bends/tilts with the slope), whole log sunk a little
+    const pp = g.attributes.position, hc = heightAt(x, z);
+    for (let i = 0; i < pp.count; i++) { const wx = x + pp.getX(i), wz = z + pp.getZ(i); pp.setY(i, pp.getY(i) + (heightAt(wx, wz) - hc) - 0.07); }
+    g.translate(x, hc, z); L.push(g); taken.push([x, z, 3.0]); }
 
   // stump circle in the north clearing
   { const cx = -4, cz = -28;

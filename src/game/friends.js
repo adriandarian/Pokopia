@@ -21,7 +21,7 @@ export function nextNeeds(sp) {
   const l = lvlOf(sp); if (l >= MAX_LEVEL) return null; const m = mem(sp), n = l + 1;
   return { pts: [ptsOf(sp), LEVEL_AT[n]], days: [m.days.length, LEVEL_DAYS[n]], kinds: [Object.keys(m.kinds).length, LEVEL_KINDS[n]] };
 }
-export const memo = (sp, text) => { const m = mem(sp); m.log.push({ t: text, d: todayStr() }); if (m.log.length > 14) m.log.shift(); saveSoon(); };
+export const memo = (sp, text) => { const m = mem(sp), t = todayStr(); if (m.log.some(x => x.t === text && x.d === t)) return; m.log.push({ t: text, d: todayStr() }); if (m.log.length > 14) m.log.shift(); saveSoon(); };
 const noteKind = (sp, k) => { const m = mem(sp); m.kinds[k] = (m.kinds[k] || 0) + 1; };
 const noteDay = (sp) => { const m = mem(sp), t = todayStr(); if (!m.days.includes(t)) m.days.push(t); };
 export const nextAt = sp => LEVEL_AT[Math.min(MAX_LEVEL, lvlOf(sp) + 1)];
@@ -52,7 +52,7 @@ function checkLevel(c, sp) {
 }
 function release(c) { c._release = true; if (c.setFriend) c.setFriend(true); else c.affinity = 3; }
 function levelReward(c, sp, l) {
-  const fav = BY_ID[sp].fav, petals = [0, 0, 10, 25, 40, 60, 150][l], bits = [];
+  const fav = BY_ID[sp].fav, petals = [0, 0, 6, 15, 25, 40, 90][l], bits = [];
   addPetals(petals); bits.push(`+${petals} 🌸`);
   const addInv = (k, n) => { state.inv[k] = (state.inv[k] || 0) + n; };
   if (l === 2) { addInv(`berry:${fav.berry}`, 2); bits.push(`2 ${COLOR_ICON[fav.berry]}`); }
@@ -73,16 +73,16 @@ export function onGift(c, key, loved) {
   if (g >= 6) { bubbleSay(c, 'I am full, thank you! Maybe tomorrow?', 3.2); return { refused: true }; }
   const mult = Math.max(0.2, 1 - 0.2 * g); inc(d().gifts, sp);
   const base = key.startsWith('gem') ? 1.5 : loved ? 5 : 2.5;
-  addPoints(c, base * mult, 'gift'); if (loved && !mem(sp).lovedMemo) { mem(sp).lovedMemo = 1; memo(sp, 'Gave them their favourite'); }
+  addPoints(c, base * mult, 'gift'); memo(sp, loved ? 'Shared their favourite gift' : 'Shared a gift'); if (loved && !mem(sp).lovedMemo) { mem(sp).lovedMemo = 1; memo(sp, 'Gave them their favourite'); }
   const w = wishOf(sp);
   if (w && w.type === 'gift' && w.key === key && c.friend) { state.wish[sp].p++; if (state.wish[sp].p >= w.n) completeWish(c); else emit('toast', { icon: '🌟', text: `${sp}'s wish: ${state.wish[sp].p}/${w.n}`, kind: 'info' }); }
-  return { petals: Math.round(((loved ? 3 : 1) + (key.startsWith('berry') ? 0 : 0)) * mult), mult };
+  return { petals: Math.round(((loved ? 2 : 1) + (key.startsWith('berry') ? 0 : 0)) * mult), mult };
 }
 function completeWish(c) {
   const sp = speciesOf(c), pool = WISHES[sp], done = wishOf(sp).text; state.wish[sp] = { i: (state.wish[sp].i + 1) % pool.length, p: 0 }; state.wishDone++; memo(sp, `Granted a wish: ${done}`);
-  addPetals(15); addPoints(c, 8, 'wish'); fx.hearts(c.m.position.clone().setY(c.m.position.y + (c.top || 1.8)), 6);
+  addPetals(10); addPoints(c, 8, 'wish'); fx.hearts(c.m.position.clone().setY(c.m.position.y + (c.top || 1.8)), 6);
   bubbleSay(c, 'Thank you!! You remembered!', 3.6); emit('wish', { species: sp });
-  emit('toast', { icon: '🌟', text: `${sp}'s wish came true! +15 🌸`, kind: 'win' }); saveSoon();
+  emit('toast', { icon: '🌟', text: `${sp}'s wish came true! +10 🌸`, kind: 'win' }); saveSoon();
 }
 
 export function initFriends(a) {
@@ -93,7 +93,7 @@ export function initFriends(a) {
     const pp = api.player.mesh.position; let best = null, bd = 7;
     for (const c of api.creatures.list) { const p = c.m.position, dd = Math.hypot(p.x - pp.x, p.z - pp.z); if (dd < bd) { bd = dd; best = c; } }
     if (!best) return; const sp = speciesOf(best);
-    if (d().emote[sp] == null || d().emote[sp] < 3) { inc(d().emote, sp); addPoints(best, 1, 'emote'); }
+    if (d().emote[sp] == null || d().emote[sp] < 3) { inc(d().emote, sp); addPoints(best, 1, 'emote'); if (best.friend) memo(sp, `Did a ${e.name === 'sense' ? 'sparkle' : e.name} together`); }
     const w = wishOf(sp); if (best.friend && e.name === 'dance' && !mem(sp).danced) { mem(sp).danced = 1; memo(sp, 'Danced together'); }
     if (w && w.type === 'emote' && w.name === e.name && best.friend) completeWish(best);
     else if (best.jy <= 0.01) best.jv = 5;
@@ -108,7 +108,7 @@ export function tickFriends(dt, now) {
     // gate the auto-friend in creatures.js until friendship points allow it
     if (!c.friend && !c._release && lvlOf(sp) < 1) c.affinity = Math.min(c.affinity, 0.8);
     if (dist < nd) { nd = dist; nc = c; }
-    if (dist < 5 && d().visit[sp] == null) { d().visit[sp] = 1; noteDay(sp); addPoints(c, 3, 'visit'); bubbleSay(c, allLines(sp, tierOf(lvlOf(sp)))[0], 3.4); emit('toast', { icon: '👋', text: `Daily hello with ${sp}! +friendship`, kind: 'info' }); }
+    if (dist < 5 && d().visit[sp] == null) { d().visit[sp] = 1; noteDay(sp); addPoints(c, 3, 'visit'); memo(sp, 'Said hello'); bubbleSay(c, allLines(sp, tierOf(lvlOf(sp)))[0], 3.4); emit('toast', { icon: '👋', text: `Daily hello with ${sp}! +friendship`, kind: 'info' }); }
     if (!c.friend && dist < 4.2) { c._nt = (c._nt || 0) + dt; if (c._nt > 6) { c._nt = 0; if ((d().near[sp] || 0) < 3) { inc(d().near, sp); addPoints(c, 1, 'time'); } } }
     if (c.friend && dist < 6) {
       c._tg = (c._tg || 0) + dt; if (c._tg > 40) { c._tg = 0; if ((d().together[sp] || 0) < 5) { inc(d().together, sp); addPoints(c, 1, 'together'); } }
@@ -129,8 +129,8 @@ export function tickFriends(dt, now) {
       hangT -= dt; if (hangT <= 0) { hangT = 0.3; for (let i = 0; i < 3; i++) fx.twinkle(new THREE.Vector3(h.x + (Math.random() - 0.5) * 0.8, heightAt(h.x, h.z) + 0.3 + i * 0.9 + Math.random() * 0.5, h.z + (Math.random() - 0.5) * 0.8), '#fff3a0'); }
       if (Math.hypot(pp.x - h.x, pp.z - h.z) < 2.6) {
         const c = list.find(x => speciesOf(x) === h.sp && x.friend) || list.find(x => speciesOf(x) === h.sp);
-        state.hang = null; addPetals(10); if (c) { addPoints(c, 5, 'hang'); bubbleSay(c, 'You came! This is my favourite place.', 4); } memo(h.sp, 'Hung out at their favourite spot');
-        emit('hang', { species: h.sp }); emit('toast', { icon: '🌟', text: `${h.sp} loved hanging out! +10 🌸`, kind: 'win' });
+        state.hang = null; addPetals(6); if (c) { addPoints(c, 5, 'hang'); bubbleSay(c, 'You came! This is my favourite place.', 4); } memo(h.sp, 'Hung out at their favourite spot');
+        emit('hang', { species: h.sp }); emit('toast', { icon: '🌟', text: `${h.sp} loved hanging out! +6 🌸`, kind: 'win' });
       }
     }
   } else if (now > hangCD) {
@@ -162,7 +162,7 @@ export function tickFriends(dt, now) {
     if (bubble.t <= 0) { bubble = null; bubbleEl.classList.add('hidden'); }
     else {
       const p = bubble.c.m.position; v.set(p.x, p.y + (bubble.c.top || 1.8) + 0.5, p.z).project(api.camera);
-      if (v.z > 1) bubbleEl.classList.add('hidden');
+      if (v.z > 1 || Math.abs(v.x) > 0.98 || v.y > 0.95 || v.y < -0.95) bubbleEl.classList.add('hidden');
       else { bubbleEl.classList.remove('hidden'); const bw = (bubbleEl.offsetWidth || 160) / 2 + 8, bx = Math.min(innerWidth - bw - (innerWidth < 700 ? 64 : 8), Math.max(bw, (v.x * 0.5 + 0.5) * innerWidth)); bubbleEl.style.transform = `translate(${bx}px,${Math.max(110, (-v.y * 0.5 + 0.5) * innerHeight)}px) translate(-50%,-100%)`; }
     }
   }

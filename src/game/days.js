@@ -1,6 +1,6 @@
 // The day counter drives gentle daily events (no timers, no streaks, nothing is ever missed).
 import * as THREE from 'three';
-import { state } from './state.js';
+import { state, save } from './state.js';
 import { eventFor } from './content.js';
 import { on, emit } from './events.js';
 import { getFX } from '../chars/fx.js';
@@ -13,7 +13,7 @@ export function initDays(a) {
 }
 function announce() {
   const e = todayEvent();
-  if (state.eventToast !== state.day) { state.eventToast = state.day; emit('toast', { icon: e.icon, text: `${e.name}: ${e.blurb}`, kind: 'good' }); }
+  if (state.eventToast !== state.day) { state.eventToast = state.day; save(); emit('toast', { icon: e.icon, text: `${e.name}: ${e.blurb}`, kind: 'good' }); }
   if (e.id === 'petalrain' && !state.settings.reduceMotion) startRain();
   if (e.id === 'firefly') { const sky = window.__game?.scene?.userData?.sky; if (sky && state.eventSeen !== state.day) { sky.hour = 20.2; } }
   state.eventSeen = state.day;

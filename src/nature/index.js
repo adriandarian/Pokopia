@@ -88,7 +88,7 @@ export function scatterNature(scene) {
   const rk = (n, o) => (M && modelGeo(n, Object.assign({ w: 2.0, moss: 0.3, smooth: 0.55, shade: [0.92, 1.18] }, o))) || null;
   const rGeo = [rk('rock_largeA', { h: 1.35 }), rk('rock_largeC', { h: 1.2 }), rk('rock_largeE', { h: 1.3 }), rk('stone_largeA', { h: 1.2 }), rk('rock_tallA', { w: 1.5, h: 2.0 })];
   const rockArr = rGeo.map((g, i) => inst(g || S.rock(i + 1), stdMat(), 120, { cast: i % 2 === 0 }));
-  const pickRock = (big) => rockArr[big && rnd() < 0.35 ? 4 : (rnd() * 4 | 0)];
+  const pickRock = (big, x, z) => rockArr[big && rnd() < 0.35 && (x === undefined || slopeAt(x, z) < 0.3) ? 4 : (rnd() * 4 | 0)]; // tall pillar rocks only on flat ground (they look like stray monoliths when standing on a slope)
   const rockCount = () => rockArr.reduce((a, m) => a + m.count, 0);
 
   const shrooms = inst((M && modelGeo('mushroom_redGroup', { h: 0.42, shade: [0.85, 1.1] })) || S.mushroom(), stdMat(), 200, { cast: false, thin: true });
@@ -122,7 +122,7 @@ export function scatterNature(scene) {
     const a = i / 6 * Math.PI * 2 + 0.5 + (rnd() - 0.5) * 0.25, d = 8.2 + rnd() * 1.6, x = SUMMIT.x + Math.cos(a) * d, z = SUMMIT.z + Math.sin(a) * d;
     if (pathMask(x, z) > 0.02 || slopeAt(x, z) > 0.9) continue;
     const sc = 0.55 + rnd() * 0.5, tint = col.setHSL(0.09 + rnd() * 0.04, 0.07, 0.72 + rnd() * 0.25).clone();
-    pickRock(true).add1(x, heightAt(x, z) - sc * 0.12, z, sc * 1.3, rnd() * 6.28, tint, 0.7 + rnd() * 0.4, 0.08);
+    pickRock(true, x, z).add1(x, heightAt(x, z) - sc * 0.12, z, sc * 1.3, rnd() * 6.28, tint, 0.7 + rnd() * 0.4, 0.08);
     taken.push([x, z, sc * 1.2]);
     if (rnd() < 0.7) { const x2 = x + 1 * (rnd() - 0.5) * 2, z2 = z + (rnd() - 0.5) * 2; pickRock().add1(x2, heightAt(x2, z2) - 0.05, z2, sc * 0.6, rnd() * 6, tint, 0.8, 0.08); }
   }
@@ -187,7 +187,7 @@ export function scatterNature(scene) {
     if (pathMask(x, z) > 0.015 || !free(x, z, 0.8)) continue;
     const sc = 0.3 + Math.pow(rnd(), 2) * (cliff ? 1.0 : 0.8);
     const tint = col.setHSL(0.07 + rnd() * 0.03, 0.08, 0.7 + rnd() * 0.3).clone();
-    pickRock(cliff).add1(x, h - sc * 0.12, z, sc * 1.3, rnd() * 6.28, tint, 0.8 + rnd() * 0.5, 0.08);
+    pickRock(cliff, x, z).add1(x, h - sc * 0.12, z, sc * 1.3, rnd() * 6.28, tint, 0.8 + rnd() * 0.5, 0.08);
     if (sc > 0.6) { taken.push([x, z, sc]); if (sc > 0.8) obs.push({ x, z, r: sc * 0.9, top: h + sc * 0.9 }); }
     if (rnd() < 0.5) { const x2 = x + (rnd() - 0.5) * 1.5, z2 = z + (rnd() - 0.5) * 1.5; pickRock().add1(x2, heightAt(x2, z2) - 0.04, z2, sc * 0.55, rnd() * 6.28, tint, 0.8, 0.08); }
   }

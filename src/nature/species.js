@@ -209,12 +209,12 @@ export function blossomTree(seed = 3) {
   const puffs = [[0.5, 2.5, 0, 0.7], [-0.7, 2.3, 0.1, 0.65], [0, 2.9, 0.2, 0.75], [0.1, 2.4, 0.8, 0.6], [-0.3, 2.6, -0.8, 0.6], [0.9, 2.8, -0.5, 0.55], [-1.0, 2.8, -0.5, 0.5], [0.4, 3.3, -0.2, 0.55], [-0.5, 3.2, 0.4, 0.5], [1.0, 2.3, 0.7, 0.45]];
   puffs.forEach((c, i) => L.push(blob(c[0], c[1], c[2], c[3], pinks[i % 4], { seed: i + seed, sy: 0.8, detail: 1, lump: 0.22, shade: [0.95, 1.12] })));
   // loose petal flakes clinging to the canopy
-  for (let i = 0; i < 46; i++) {
-    const p = puffs[i % puffs.length], a = r() * 6.28, b = r() * 2.4 - 0.4, rr = p[3] * 1.02;
+  for (let i = 0; i < 0; i++) { // flat flakes removed: they read as dark/white shards (falling petals are drawn by petals.js)
+    const p = puffs[i % puffs.length], a = r() * 6.28, b = r() * 2.4 - 0.4, rr = p[3] * 0.97;
     const x = p[0] + Math.cos(a) * Math.cos(b) * rr, y = p[1] + Math.sin(b) * rr * 0.8, z = p[2] + Math.sin(a) * Math.cos(b) * rr;
-    let g = new THREE.CircleGeometry(0.1 + r() * 0.05, 5); g.rotateY(-a + Math.PI / 2); g.rotateX(-b * 0.4);
+    let g = new THREE.CircleGeometry(0.05 + r() * 0.03, 6); g.rotateY(-a + Math.PI / 2); g.rotateX(-b * 0.4);
     g.translate(x, y, z);
-    L.push(prep(g, r() < 0.5 ? '#ffffff' : '#ffe6ef', 0.9, [1, 1], 0.02));
+    L.push(prep(g, pinks[(i * 7) % 4], 0.9, [0.92, 1.05], 0.02));
   }
   return merge(L);
 }

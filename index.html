@@ -9,7 +9,7 @@
   html,body{margin:0;height:100%;overflow:hidden;background:#9fd8ff;font-family:ui-rounded,"SF Pro Rounded","Nunito","Arial Rounded MT Bold","Trebuchet MS",system-ui,sans-serif;touch-action:none}
   canvas{display:block}
   #loading{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
-    background:radial-gradient(120% 90% at 50% 0%,#c9ecff 0%,#9fd8ff 45%,#ffd9ec 100%);color:#4a3358;transition:opacity .6s ease;touch-action:none}
+    background:radial-gradient(120% 90% at 50% 0%,#c9ecff 0%,#9fd8ff 45%,#ffd9ec 100%);color:#4a3358;transition:opacity .45s ease;touch-action:none}
   #loading.done{opacity:0;pointer-events:none}
   #loading .ld-logo{font-size:clamp(44px,11vw,84px);font-weight:900;letter-spacing:1px;color:#fff;text-shadow:0 4px 0 #ff7eb6,0 8px 0 rgba(120,70,140,.28),0 14px 24px rgba(60,30,90,.25);animation:ldBob 1.6s ease-in-out infinite}
   #loading .ld-bar{width:min(72vw,360px);height:18px;border-radius:999px;background:rgba(255,255,255,.7);border:3px solid #fff;box-shadow:0 5px 0 rgba(120,70,140,.2),0 10px 22px rgba(60,30,90,.15);overflow:hidden}
@@ -27,7 +27,8 @@
   // tiny loading-screen API used by src/main.js (progress 0..1, friendly label); runs before any module loads
   window.__loading = {
     set(p, label) { var f = document.getElementById('ld-fill'), t = document.getElementById('ld-tx'); if (f) f.style.width = Math.max(6, Math.min(100, p * 100)) + '%'; if (t && label) t.textContent = label; },
-    done() { var e = document.getElementById('loading'); if (!e) return; e.classList.add('done'); setTimeout(function () { e.remove(); }, 700); }
+    // loader fades out completely first, THEN the title fades in (body.loaded): never both on screen
+    done() { var e = document.getElementById('loading'); if (!e) { document.body.classList.add('loaded'); return; } e.classList.add('done'); setTimeout(function () { e.remove(); document.body.classList.add('loaded'); }, 500); }
   };
 </script>
 <div id="score" hidden></div>

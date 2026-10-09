@@ -71,17 +71,19 @@ export const SLOTS = [
   { id: 'hat', label: '👒 Hats' }, { id: 'shirt', label: '👕 Shirts' }, { id: 'hair', label: '💇 Hair' },
   { id: 'pack', label: '🎒 Packs' }, { id: 'sticker', label: '😊 Faces' }, { id: 'trail', label: '✨ Trails' },
 ];
+// Economy rebalance: pricier cosmetics keep spending meaningful now that petals come in more slowly.
+for (const w of WARDROBE) if (w.price > 100) w.price *= 2;
 export const DEFAULT_EQUIP = { hat: 'hat_none', shirt: 'col_red', hair: 'hair_brown', pack: 'pack_gold', sticker: 'st_none', trail: 'tr_none' };
 export const DEFAULT_OWNED = ['hat_none', 'col_red', 'hair_brown', 'pack_gold', 'pack_none', 'st_none', 'tr_none'];
 
 // Milestones: automatic rewards for playing. test(summary) -> bool.
 export const MILESTONES = [
-  { id: 'm_dis4', text: 'Discovered 4 creatures', test: s => s.discovered >= 4, petals: 25 },
-  { id: 'm_friend3', text: 'Made 3 friends', test: s => s.friends >= 3, petals: 20, item: 'st_heart' },
-  { id: 'm_gems100', text: 'Collected 100 gems', test: s => s.gems >= 100, petals: 30, item: 'shirt_sunset' },
-  { id: 'm_bond3', text: 'Best-friend level with a creature', test: s => s.maxBond >= 3, petals: 40, item: 'st_star' },
-  { id: 'm_journal', text: 'Journal complete: discovered all 8!', test: s => s.discovered >= 8, petals: 100, item: 'hat_halo' },
-  { id: 'm_friend8', text: 'Befriended every species!', test: s => s.friends >= 8, petals: 150, item: 'tr_rainbow' },
+  { id: 'm_dis4', text: 'Discovered 4 creatures', test: s => s.discovered >= 4, petals: 15 },
+  { id: 'm_friend3', text: 'Made 3 friends', test: s => s.friends >= 3, petals: 12, item: 'st_heart' },
+  { id: 'm_gems100', text: 'Collected 100 gems', test: s => s.gems >= 100, petals: 20, item: 'shirt_sunset' },
+  { id: 'm_bond3', text: 'Best-friend level with a creature', test: s => s.maxBond >= 3, petals: 25, item: 'st_star' },
+  { id: 'm_journal', text: 'Journal complete: discovered all 8!', test: s => s.discovered >= 8, petals: 60, item: 'hat_halo' },
+  { id: 'm_friend8', text: 'Befriended every species!', test: s => s.friends >= 8, petals: 90, item: 'tr_rainbow' },
 ];
 // Friendship levels by gifts given to a species: level N reached at BOND_AT[N] gifts.
 export const BOND_AT = [0, 1, 4, 9];
@@ -111,4 +113,6 @@ export const QUEST_POOL = [
 ];
 
 // Rotating featured creature: one per day, cycles through the species. Bonus petals only; never expires anything.
+// Gentler quest payouts (rounded, never below 5).
+for (const q of QUEST_POOL) q.reward = Math.max(5, Math.round(q.reward * 0.6));
 export const featuredSpecies = (day) => SPECIES[(Math.max(1, day) - 1) % SPECIES.length];

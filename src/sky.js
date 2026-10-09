@@ -243,20 +243,20 @@ export function buildSky(scene) {
 
   // ---------- water ----------
   const floorTex = floorTexture();
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200, 1, 1).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(2600, 2600, 1, 1).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
     transparent: true, fog: true, depthWrite: false,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       time: { value: 0 }, floorTex: { value: floorTex },
       shallow: { value: new THREE.Color('#7ff0e0') }, deep: { value: new THREE.Color('#1a6fc0') },
       zen: { value: state.zen }, hor: { value: state.hor }, sunCol: { value: state.sun }, sunDir: { value: state.dir },
-      light: { value: 1 }, uQ: { value: 2 },
+      light: { value: 1 }, uQ: { value: 2 }, uNight: { value: 0 },
     }]),
     vertexShader: `varying vec3 w;
       #include <fog_pars_vertex>
       void main(){vec4 wp=modelMatrix*vec4(position,1.);w=wp.xyz;vec4 mvPosition=viewMatrix*wp;gl_Position=projectionMatrix*mvPosition;
       #include <fog_vertex>
       }`,
-    fragmentShader: `uniform float time;uniform float light;uniform float uQ;uniform vec3 shallow,deep,zen,hor,sunCol,sunDir;uniform sampler2D floorTex;varying vec3 w;
+    fragmentShader: `uniform float time;uniform float light;uniform float uQ;uniform float uNight;uniform vec3 shallow,deep,zen,hor,sunCol,sunDir;uniform sampler2D floorTex;varying vec3 w;
       #include <fog_pars_fragment>
       float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
       float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
@@ -299,6 +299,7 @@ export function buildSky(scene) {
         vec3 skyc=skyCol(R);
         float fres=.03+.97*pow(1.-max(dot(V,N),0.),4.);
         col*=light*mix(vec3(1.),sunCol,.4);
+        col=mix(col,vec3(dot(col,vec3(.3,.59,.11)))*vec3(.46,.62,.9)*.72,uNight*.78); // night sea: darker, desaturated, no neon blue
         col=mix(col,skyc,clamp(fres,0.,.66));
         vec3 Rs=reflect(-V,Ns); Rs.y=abs(Rs.y); float sds=max(dot(Rs,sunDir),0.);
         float spec=pow(sds,300.)*4.+pow(sds,60.)*.3+pow(sds,14.)*.12;
@@ -326,6 +327,7 @@ export function buildSky(scene) {
         alpha=mix(alpha,.55,film*.4);
         alpha=max(alpha,f*.92);
         alpha*=smoothstep(.0,.12,depth+f*.12); // long soft fade: no hard waterline seam
+        col=mix(col,vec3(dot(col,vec3(.3,.59,.11)))*vec3(.62,.76,1.0)*.9,uNight*.6*(1.-f)); // night: calm the reflected sky too (foam stays)
         gl_FragColor=vec4(col,alpha);
         #include <fog_fragment>
       }`,
@@ -368,7 +370,7 @@ export function buildSky(scene) {
     const night = 1 - SM(e, -0.2, 0.04);
     skyMat.uniforms.night.value = night;
     state.dusk = skyMat.uniforms.dusk.value = THREE.MathUtils.clamp(1 - Math.abs(e + 0.02) / 0.28, 0, 1);
-    water.material.uniforms.light.value = 0.6 + 0.4 * SM(e, -0.15, 0.3);
+    water.material.uniforms.light.value = 0.6 + 0.4 * SM(e, -0.15, 0.3); water.material.uniforms.uNight.value = night;
     state.night = night;
     state.bloom = 0.24 + 0.2 * state.dusk - 0.06 * night;
     // clouds: sunlit side takes sun colour, shaded side is cool sky colour

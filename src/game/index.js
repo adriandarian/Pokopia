@@ -15,7 +15,7 @@ import { initTouch } from './touch.js';
 import { initEmotes } from './emotes.js';
 import { startGuide, updateGuide } from './guide.js';
 import { initFriends, tickFriends, onGift, speciesOf, lvlOf, grandfather } from './friends.js';
-import { initDecor, tickDecor, isPlacing, confirmPlacing, rotatePlacing, cancelPlacing, storeMoving, nearestDecor, moveDecor } from './decor.js';
+import { initDecor, tickDecor, isPlacing, confirmPlacing, rotatePlacing, cancelPlacing, storeMoving, undoPlace, nearestDecor, moveDecor } from './decor.js';
 import { initDays, tickDays, todayEvent } from './days.js';
 import { getFX } from '../chars/fx.js';
 import { shared } from './shared.js';
@@ -49,17 +49,17 @@ export function initGame(api) {
   let carry = 0;
   const gemPay = (n) => {
     const d = state.daily; d.gemPetals = d.gemPetals || 0;
-    const mult = d.gemPetals < 150 ? 1 : Math.max(0.25, 1 - (d.gemPetals - 150) / 400);
-    if (d.gemPetals < 150 && d.gemPetals + n >= 150) emit('toast', { icon: '🌙', text: 'Petals from gems are resting a little. Gifts, wishes and quests still count!', kind: 'info' });
+    const mult = d.gemPetals < 70 ? 1 : Math.max(0.25, 1 - (d.gemPetals - 70) / 200);
+    if (d.gemPetals < 70 && d.gemPetals + n >= 70) emit('toast', { icon: '🌙', text: 'Petals from gems are resting a little. Gifts, wishes and quests still count!', kind: 'info' });
     d.gemPetals += n; carry += n * mult; const pay = Math.floor(carry); carry -= pay; if (pay > 0) addPetals(pay);
   };
   on('collect', e => { state.totalGems += e.amount ?? 1; gemPay(e.amount ?? 1); checkMilestones(); });
   on('discover', e => { if (state.discovered[e.species]) { e.repeat = true; return; } state.discovered[e.species] = Date.now(); saveSoon(); checkMilestones(); });
   on('befriend', e => {
     if (state.befriended[e.species]) { e.repeat = true; return; }
-    state.befriended[e.species] = Date.now(); state.discovered[e.species] ||= Date.now(); addPetals(5); saveSoon(); checkMilestones();
+    state.befriended[e.species] = Date.now(); state.discovered[e.species] ||= Date.now(); addPetals(3); saveSoon(); checkMilestones();
   });
-  on('befriend', e => { grandfather(e.species); if (e.species === featuredSpecies(state.day).id) addPetals(5); });
+  on('befriend', e => { grandfather(e.species); if (e.species === featuredSpecies(state.day).id) addPetals(3); });
   initQuests();
   if (api.player?.mesh) { initCosmetics(api.player); initEmotes(api.player); initDecor(api.player); }
   initUI({ initAudio });
@@ -85,12 +85,12 @@ export function initGame(api) {
     if (colorName) { const key = `${k}:${colorName}`; state.inv[key] = (state.inv[key] || 0) + 1; }
     // economy: gem colours differ in value; lucky gem of the day; events; combos
     let extra = 0; const ev = todayEvent().id;
-    if (k === 'gem') { extra += (GEM_VALUE[colorName] || 1) - 1; if (colorName === luckyGem(state.day)) extra += 1; if (ev === 'petalrain') extra += 1; }
-    else if (ev === 'berry') extra += 2;
+    if (k === 'gem') { extra += (GEM_VALUE[colorName] || 1) - 1; if (colorName === luckyGem(state.day)) extra += 0.5; if (ev === 'petalrain') extra += 0.5; }
+    else if (ev === 'berry') extra += 1;
     const now = performance.now(); combo = now - lastPick < 2000 ? combo + 1 : 1; lastPick = now;
     if (COMBO_BONUS[combo]) { extra += COMBO_BONUS[combo]; emit('toast', { icon: '🔥', text: `Collecting streak x${combo}! +${COMBO_BONUS[combo]} 🌸`, kind: 'win' }); }
     if (extra) gemPay(extra);
-    for (const it of [...revealed]) if (!api.collect.items.includes(it)) { revealed.delete(it); hidden.delete(it); const dd = state.daily; dd.hiddenFound = (dd.hiddenFound || 0) + 1; const bonus = dd.hiddenFound <= 4 ? 5 : 0; if (bonus) addPetals(bonus); emit('toast', { icon: '💎', text: bonus ? 'Hidden gem found! +5 🌸' : 'Hidden gem found! (bonus petals are resting today)', kind: 'win' }); }
+    for (const it of [...revealed]) if (!api.collect.items.includes(it)) { revealed.delete(it); hidden.delete(it); const dd = state.daily; dd.hiddenFound = (dd.hiddenFound || 0) + 1; const bonus = dd.hiddenFound <= 4 ? 3 : 0; if (bonus) addPetals(bonus); emit('toast', { icon: '💎', text: bonus ? 'Hidden gem found! +3 🌸' : 'Hidden gem found! (bonus petals are resting today)', kind: 'win' }); }
     saveSoon(); emit('pickup', { kind: k, colorName }); emit('inventory');
   };
 
@@ -155,6 +155,7 @@ export function initGame(api) {
     else if (e.code === 'KeyR') rotatePlacing();
     else if (e.code === 'Escape') cancelPlacing();
     else if (e.code === 'KeyX' || e.code === 'Backspace') storeMoving();
+    else if (e.code === 'KeyZ' && !e.ctrlKey && !e.metaKey && !document.getElementById('overlay')) undoPlace();
   });
   on('ui:interact', interact);
   on('ui:giftkey', e => { selGift = selGift === e.key ? null : e.key; });

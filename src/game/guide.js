@@ -36,29 +36,29 @@ function advance(n) {
 }
 let nextIdx = 0, hideT = 0, curHint = '';
 // drop a visible hint as soon as its reason is gone (e.g. you just placed the decor / gave the gift)
-function recheck() { if (!objEl || !objEl.classList.contains('next') || objEl.classList.contains('hidden')) return; const keep = suggestions().some(x => x[0] === curHint); if (!keep) objEl.classList.add('hidden'); }
+function recheck() { if (!objEl || !objEl.classList.contains('next') || objEl.classList.contains('hidden')) return; const keep = suggestions(true).some(x => x[0] === curHint); if (!keep) objEl.classList.add('hidden'); }
 const HINT_GAP = 10 * 60 * 1000;
-function suggestions() {
+// Every hint is relevant-only and obeys the 10-minute limiter; when nothing is relevant we show nothing.
+function suggestions(ignoreLimit = false) {
   const L = [], n = k => Object.entries(state.inv).filter(([x]) => x.startsWith(k + ':')).reduce((a, [, v]) => a + v, 0);
   if (state.quests?.some(q => q.done && !q.claimed)) L.push(['⭐ Quest reward ready!', 'Open the quest list and claim your petals.']);
   const w = activeWishText(); if (w) L.push([`🌟 ${w.sp} has a wish`, w.text]);
-  if (n('berry') + n('gem') > 0) L.push(['🎁 You have gifts to give', 'Walk up to a creature and ' + (isTouchDevice() ? 'tap Give' : 'press E') + '. Everyone has favourites!']);
+  if (n('berry') + n('gem') > 0 && n('berry') + n('gem') < 40) L.push(['🎁 You have gifts to give', 'Walk up to a creature and ' + (isTouchDevice() ? 'tap Give' : 'press E') + '. Everyone has favourites!']);
   const aff = WARDROBE.filter(x => !state.owned.includes(x.id) && !x.gift && x.price <= state.petals).sort((a, b) => b.price - a.price)[0];
   if (aff) L.push([`👒 You can afford ${aff.icon} ${aff.name}!`, 'Try it on in the wardrobe.']);
   const dinv = Object.values(state.decorInv || {}).reduce((a, b) => a + b, 0);
-  if (dinv) L.push(['🏡 Decorations ready to place', 'Open the island menu and tap Place.']); else if (state.petals >= 40) L.push(['🏡 Decorate your island', 'Buy a lantern or bench, then place it near home.']);
-  const left = SPECIES.filter(x => !state.discovered[x.id]).length; if (left) L.push([`🔍 ${left} creature${left > 1 ? 's' : ''} still to discover`, 'Explore new corners of the island.']);
-  const ev = eventFor(state.day); L.push([`${ev.icon} ${ev.name}`, ev.blurb]);
-  L.push(['💎 Collect gems and berries', 'Yellow gems are worth the most petals!']);
-  // do not nag: each hint at most once per 10 minutes (persisted), always keep the fallback entries
+  if (dinv) L.push(['🏡 Decorations ready to place', 'Open the island menu and tap Place.']); else if (state.petals >= 80 && !state.decor.length) L.push(['🏡 Decorate your island', 'Buy a lantern or bench, then place it near home.']);
+  const left = SPECIES.filter(x => !state.discovered[x.id]).length; if (left && state.totalGems >= 10) L.push([`🔍 ${left} creature${left > 1 ? 's' : ''} still to discover`, 'Explore new corners of the island.', 'discover']);
+  const ev = eventFor(state.day); if (state.eventToast !== state.day) L.push([`${ev.icon} ${ev.name}`, ev.blurb, 'event' + state.day]);
+  if (state.totalGems < 20 && n('gem') < 5) L.push(['💎 Collect gems and berries', 'Yellow gems are worth the most petals!', 'collect']);
   const now = Date.now(), seen = state.hints || (state.hints = {});
-  const fresh = L.filter((x, i) => i >= L.length - 3 || !seen[x[0]] || now - seen[x[0]] > HINT_GAP);
-  return fresh;
+  return L.filter(x => ignoreLimit || !seen[x[2] || x[0]] || now - seen[x[2] || x[0]] > HINT_GAP);
 }
 function paintObjective() {
   const s = STEPS[state.tutorial];
   if (!s) {
-    const L = suggestions(), [t, sub] = L[nextIdx++ % L.length]; (state.hints || (state.hints = {}))[t] = Date.now(); curHint = t;
+    const L = suggestions(); if (!L.length) { objEl.classList.add('hidden'); return; }
+    const [t, sub, key] = L[nextIdx++ % L.length]; (state.hints || (state.hints = {}))[key || t] = Date.now(); curHint = t; saveSoon();
     objEl.innerHTML = `<b>${t}</b><small>${sub}</small>`; objEl.classList.remove('hidden'); objEl.classList.add('next'); arrowEl.classList.add('hidden'); clearTimeout(hideT); hideT = setTimeout(() => { if (!STEPS[state.tutorial]) objEl.classList.add('hidden'); }, 6000); return;
   }
   objEl.classList.remove('next');

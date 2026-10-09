@@ -3,9 +3,9 @@ import './style.css';
 import { state, save, saveSoon, addPetals, resetSave } from '../game/state.js';
 import { SPECIES, WARDROBE, SLOTS, COLOR_ICON, BOND_AT, featuredSpecies } from '../game/data.js';
 import { isTouchDevice } from '../game/touch.js';
-import { EMOTES, playEmote, senseLeft } from '../game/emotes.js';
+import { EMOTES, playEmote, senseLeft, SENSE_CD } from '../game/emotes.js';
 import { LEVEL_NAME, LEVEL_AT, DECOR, DECOR_CATS, DECOR_BY_ID, eventFor, MAX_LEVEL, CHARM_MS } from '../game/content.js';
-import { startPlacing, moveDecor, storeIndex, sizePlacing, tintPlacing, linePlacing, rotatePlacing, cancelPlacing, confirmPlacing, storeMoving, buyDecor, charm, nextCharm } from '../game/decor.js';
+import { startPlacing, moveDecor, storeIndex, sizePlacing, tintPlacing, linePlacing, rotatePlacing, cancelPlacing, confirmPlacing, storeMoving, buyDecor, charm, nextCharm, nudgePlacing, undoPlace, canUndo } from '../game/decor.js';
 import { makePreview } from '../game/cosmetics.js';
 import { applySettings } from '../game/audio.js';
 import { ptsOf, nextAt, wishOf, activeWishText, lvlOf, nextNeeds, mem } from '../game/friends.js';
@@ -41,6 +41,15 @@ const DECOR_SVG = {
   d_windmill: sv('<path d="M24 56 L28 28 H36 L40 56 Z" fill="#fff0dc" stroke="#9c8a74" stroke-width="2"/><path d="M26 28 L32 18 L38 28 Z" fill="#ee7a8d"/><g stroke="#fff" stroke-width="5" stroke-linecap="round"><path d="M32 26 L14 14"/><path d="M32 26 L50 14"/><path d="M32 26 L14 38"/><path d="M32 26 L50 38"/></g><circle cx="32" cy="26" r="3" fill="#9a6b45"/>', '#e4f4ff'),
   d_gazebo: sv('<path d="M8 28 L32 10 L56 28 Z" fill="#ee7a8d" stroke="#c9566e" stroke-width="2"/><path d="M14 30 V52 M26 30 V52 M38 30 V52 M50 30 V52" stroke="#fff4e2" stroke-width="4"/><rect x="8" y="50" width="48" height="6" rx="3" fill="#e9d3b0"/>', '#f1ffe9'),
   d_stones: sv('<ellipse cx="20" cy="42" rx="11" ry="7" fill="#cdbfae" stroke="#9c8a74" stroke-width="2"/><ellipse cx="40" cy="30" rx="10" ry="6" fill="#d9ccb9" stroke="#9c8a74" stroke-width="2"/><ellipse cx="42" cy="50" rx="9" ry="5" fill="#c4b6a3" stroke="#9c8a74" stroke-width="2"/>', '#e8f5e0'),
+  d_path: sv('<path d="M6 50 Q20 44 26 36 T44 22 L58 14" fill="none" stroke="#efc9b6" stroke-width="16" stroke-linecap="round"/><path d="M6 50 Q20 44 26 36 T44 22 L58 14" fill="none" stroke="#dba995" stroke-width="16" stroke-linecap="round" stroke-dasharray="1 20" opacity=".9"/><ellipse cx="14" cy="48" rx="6" ry="4" fill="#dba995"/><ellipse cx="30" cy="34" rx="6" ry="4" fill="#dba995"/><ellipse cx="46" cy="22" rx="6" ry="4" fill="#dba995"/>', '#eaf6e0'),
+  d_fence: sv('<rect x="4" y="30" width="56" height="6" rx="2" fill="#e9d8bf" stroke="#9c8a74" stroke-width="1.5"/><rect x="4" y="42" width="56" height="6" rx="2" fill="#e9d8bf" stroke="#9c8a74" stroke-width="1.5"/><g fill="#fff" stroke="#9c8a74" stroke-width="2" stroke-linejoin="round"><path d="M9 54 V22 L14 15 L19 22 V54 Z"/><path d="M23 54 V22 L28 15 L33 22 V54 Z"/><path d="M37 54 V22 L42 15 L47 22 V54 Z"/><path d="M51 54 V22 L56 15 L61 22 V54 Z" transform="translate(-4 0)"/></g>', '#e4f6e0'),
+  d_bench: sv('<rect x="10" y="22" width="44" height="8" rx="3" fill="#e9b36b" stroke="#a9733a" stroke-width="2"/><rect x="8" y="34" width="48" height="8" rx="3" fill="#f0c283" stroke="#a9733a" stroke-width="2"/><path d="M14 42 V54 M50 42 V54 M16 30 V34 M48 30 V34" stroke="#a9733a" stroke-width="4" stroke-linecap="round"/>', '#e4f6e0'),
+  d_table: sv('<ellipse cx="32" cy="28" rx="22" ry="8" fill="#fff0dc" stroke="#c98f55" stroke-width="2.5"/><path d="M32 34 V52 M22 54 H42" stroke="#c98f55" stroke-width="4" stroke-linecap="round"/><path d="M26 22 q0-6 6-6 t6 6 z" fill="#ff9ec4"/><circle cx="43" cy="24" r="3" fill="#ff7a9a"/>', '#fdeaf3'),
+  d_sapling: sv('<path d="M32 56 V34" stroke="#8a5a3a" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="24" r="14" fill="#ffb7d2"/><circle cx="20" cy="32" r="9" fill="#ff9ec4"/><circle cx="44" cy="32" r="9" fill="#ffc9de"/><circle cx="28" cy="20" r="3" fill="#fff" opacity=".7"/>', '#e9f6ff'),
+  d_hedge: sv('<ellipse cx="32" cy="40" rx="24" ry="15" fill="#4fbf5a" stroke="#2f8f3c" stroke-width="2"/><circle cx="18" cy="38" r="9" fill="#63cf6a"/><circle cx="46" cy="38" r="9" fill="#58c862"/><circle cx="26" cy="32" r="3" fill="#ff8fb3"/><circle cx="38" cy="30" r="3" fill="#fff27a"/><circle cx="32" cy="42" r="3" fill="#fff"/>', '#eaf8e4'),
+  d_lamppost: sv('<path d="M32 56 V18" stroke="#4a4058" stroke-width="5" stroke-linecap="round"/><path d="M22 56 H42" stroke="#4a4058" stroke-width="5" stroke-linecap="round"/><path d="M22 18 L32 8 L42 18 Z" fill="#4a4058"/><rect x="24" y="18" width="16" height="14" rx="3" fill="#fff0a0" stroke="#4a4058" stroke-width="3"/>', '#e8e4f8'),
+  d_fairy: sv('<g><circle cx="32" cy="32" r="20" fill="none" stroke="#d9f3ff" stroke-width="3" stroke-dasharray="3 3"/><circle cx="32" cy="12" r="6" fill="#ff7aa8"/><circle cx="52" cy="32" r="6" fill="#ffcf5a"/><circle cx="32" cy="52" r="6" fill="#ff7aa8"/><circle cx="12" cy="32" r="6" fill="#ffcf5a"/><circle cx="46" cy="18" r="5" fill="#ffcf5a"/><circle cx="18" cy="46" r="5" fill="#ffcf5a"/><circle cx="46" cy="46" r="5" fill="#ff7aa8"/><circle cx="18" cy="18" r="5" fill="#ff7aa8"/><path d="M32 26 l2 5 5 .5-4 3 1.5 5-4.5-3-4.5 3 1.5-5-4-3 5-.5z" fill="#fff6a8"/></g>', '#e4f6e0'),
+  d_house: sv('<rect x="12" y="28" width="40" height="26" rx="2" fill="#fff0dc" stroke="#9c8a74" stroke-width="2"/><path d="M6 30 L32 8 L58 30 Z" fill="#ee7a8d" stroke="#c9566e" stroke-width="2"/><rect x="27" y="38" width="10" height="16" rx="5" fill="#9a6b45"/><rect x="15" y="34" width="9" height="9" fill="#9fd8ff"/><rect x="40" y="34" width="9" height="9" fill="#9fd8ff"/><rect x="40" y="10" width="6" height="12" fill="#c9bdb0"/>', '#e4f6e0'),
   d_well: sv('<rect x="16" y="32" width="32" height="20" rx="4" fill="#c9bdb0" stroke="#9c8a74" stroke-width="2"/><rect x="18" y="34" width="28" height="5" fill="#4fb4e8"/><path d="M14 30 L32 12 L50 30 Z" fill="#e5788f"/><path d="M20 30 V50 M44 30 V50" stroke="#9a6b45" stroke-width="3"/>', '#e4f4ff'),
 };
 const decIcon = (d) => DECOR_SVG[d.id] || (d.species ? `<span class="big">${(SPECIES.find(x => x.id === d.species) || {}).icon || '🧸'}</span>` : `<span class="big">${d.icon}</span>`);
@@ -69,13 +78,16 @@ export function initUI({ initAudio }) {
           <button class="round" id="b-emote" aria-label="Emotes" title="Emotes (1-5)">😊</button>
         </div>
         <div class="row2">
+          <button class="round sense" id="b-sense" aria-label="Sparkle Sense: reveal hidden gems" title="Sparkle Sense (key 5)"><span class="si">👁️</span><span class="sl">Sense</span></button>
           <button class="round sm" id="b-mute" aria-label="Mute" title="Sound on/off">🔊</button>
           <button class="round sm grape" id="b-help" aria-label="Help" title="Help (H)">?</button>
           <button class="round sm grape" id="b-settings" aria-label="Settings" title="Settings">⚙️</button>
         </div>
       </div>
-      <div id="emotewheel" class="hidden">${EMOTES.map((e, i) => `<button class="round" data-e="${e.id}" aria-label="${e.label}" title="${e.label}">${e.icon}<small>${i + 1}</small></button>`).join('')}</div>
-      <div id="placebar" class="hidden"><div class="ph"></div><div class="pb"><button class="btn mint sm" id="pl-ok">✔ Place</button><button class="btn sun sm" id="pl-rot">⟲ Turn</button><button class="btn sm" id="pl-size">📏 Size</button><button class="btn sm" id="pl-tint">🎨 Colour</button><button class="btn sm" id="pl-line">↔ Line</button><button class="btn sm" id="pl-store">📦 Store</button><button class="btn sm grey" id="pl-x">✕</button></div></div>
+      <div id="emotewheel" class="hidden">${EMOTES.map((e, i) => e.id === 'sense' ? '' : `<button class="round" data-e="${e.id}" aria-label="${e.label}" title="${e.label}">${e.icon}<small>${i + 1}</small></button>`).join('')}</div>
+      <div id="placebar" class="hidden"><div class="ph"></div><div class="pb"><button class="btn mint sm" id="pl-ok">✔ Place</button><button class="btn sun sm" id="pl-rot">⟲ Turn</button><button class="btn sm" id="pl-undo">↶ Undo</button><button class="btn sm" id="pl-size">📏 Size</button><button class="btn sm" id="pl-tint">🎨 Colour</button><button class="btn sm" id="pl-line">↔ Line</button><button class="btn sm" id="pl-store">📦 Store</button><button class="btn sm grey" id="pl-x">✕</button></div></div>
+      <div class="nudge hidden" id="nudge" aria-label="Nudge the ghost"><button id="nd-u" aria-label="Nudge forward">▲</button><button id="nd-l" aria-label="Nudge left">◀</button><button id="nd-c" aria-label="Reset aim">Nudge</button><button id="nd-r" aria-label="Nudge right">▶</button><button id="nd-d" aria-label="Nudge back">▼</button></div>
+      <button class="btn sm undo hidden" id="undo" title="Undo last placement (Z)">↶ Undo</button>
       <div id="prompt" class="hidden"><button class="btn mint"></button><div class="chips"></div><small class="psub"></small></div>
       <div id="help"></div>
     </div>
@@ -96,6 +108,7 @@ export function initUI({ initAudio }) {
   const logo = $('.logo'); 'Pokopia'.split('').forEach((c, i) => { const s = document.createElement('span'); s.textContent = c; s.style.setProperty('--i', i); s.style.setProperty('--c', colors[i]); s.style.setProperty('--r', (i % 2 ? -4 : 4) + 'deg'); logo.appendChild(s); });
   for (let i = 0; i < 22; i++) { const s = h(`<span class="sparkle">✦</span>`); s.style.cssText = `left:${Math.random() * 100}%;top:${Math.random() * 100}%;--s:${12 + Math.random() * 22}px;--d:${Math.random() * 3}s`; $('#title').appendChild(s); }
 
+  if (!document.getElementById('loading')) document.body.classList.add('loaded');
   $('#play').onclick = () => {
     if (started) return; started = true;
     initAudio(); sfx.open();
@@ -118,19 +131,24 @@ export function initUI({ initAudio }) {
     e.preventDefault(); const sel = [...chips].find(c => c.classList.contains('sel')) || chips[0]; sel.focus();
   });
   $('#b-emote').onclick = () => $('#emotewheel').classList.toggle('hidden');
-  const senseBtn = $('#emotewheel [data-e=sense]');
-  setInterval(() => { if (!senseBtn) return; const l = senseLeft(); senseBtn.classList.toggle('cool', l > 0); senseBtn.dataset.cd = l > 0 ? Math.ceil(l / 1000) + 's' : ''; }, 500);
+  const senseBtn = $('#b-sense'); senseBtn.onclick = () => playEmote('sense');
+  const tickSense = () => { const l = senseLeft(); senseBtn.classList.toggle('cool', l > 0); senseBtn.style.setProperty('--p', ((1 - l / SENSE_CD) * 100).toFixed(1)); senseBtn.querySelector('.sl').textContent = l > 0 ? Math.ceil(l / 1000) + 's' : 'Sense'; senseBtn.title = l > 0 ? `Sparkle Sense is resting (${Math.ceil(l / 1000)}s)` : 'Sparkle Sense: reveal hidden gems (key 5)'; };
+  setInterval(tickSense, 250); tickSense();
   $('#emotewheel').querySelectorAll('[data-e]').forEach(b => b.onclick = () => { playEmote(b.dataset.e); $('#emotewheel').classList.add('hidden'); });
   $('#b-help').onclick = () => toggle('help'); $('#b-decor').onclick = () => toggle('decor');
   const muteIcon = () => { $('#b-mute').textContent = state.settings.mute ? '🔇' : '🔊'; };
   $('#b-mute').onclick = () => { state.settings.mute = !state.settings.mute; applySettings(); saveSoon(); muteIcon(); };
   muteIcon();
   $('#pl-ok').onclick = () => confirmPlacing(); $('#pl-rot').onclick = () => rotatePlacing(); $('#pl-x').onclick = () => cancelPlacing(); $('#pl-store').onclick = () => storeMoving(); $('#pl-size').onclick = () => sizePlacing(); $('#pl-tint').onclick = () => tintPlacing(); $('#pl-line').onclick = () => linePlacing();
-  on('placereason', e => { const ph = $('#placebar .ph'); if (!ph) return; ph.classList.toggle('bad', !!e.text); if (e.text) ph.textContent = '🚫 ' + e.text; else ph.textContent = T_() ? 'Use the stick to aim the ghost' : 'Walk to aim · R rotate · E place · Esc cancel'; });
+  $('#pl-undo').onclick = () => undoPlace(); $('#undo').onclick = () => undoPlace();
+  for (const [id, dx, dy] of [['#nd-u', 0, -1], ['#nd-d', 0, 1], ['#nd-l', -1, 0], ['#nd-r', 1, 0], ['#nd-c', 0, 0]]) $(id).onclick = () => nudgePlacing(dx, dy);
+  let undoT = 0; const undoShow = () => { const u = $('#undo'); clearTimeout(undoT); const show = canUndo() && !document.body.classList.contains('placing'); u.classList.toggle('hidden', !show); if (show) undoT = setTimeout(() => u.classList.add('hidden'), 15000); };
+  on('place', () => setTimeout(undoShow, 50)); on('undo', undoShow); on('placing', () => setTimeout(undoShow, 0));
+  on('placereason', e => { const ph = $('#placebar .ph'); if (!ph) return; ph.classList.toggle('bad', !!e.text); if (e.text) ph.textContent = '🚫 ' + e.text; else ph.textContent = T_() ? 'Walk or nudge to aim' : 'Walk to aim · R rotate · E place · Z undo'; });
   on('placing', e => {
-    $('#placebar').classList.toggle('hidden', !e.on); document.body.classList.toggle('placing', !!e.on); if (!e.on) return;
-    $('#pl-store').classList.toggle('hidden', !e.moving); document.body.classList.add('placing');
-    $('#placebar .ph').textContent = (T_() ? 'Use the stick to aim the ghost' : 'Walk to aim · R rotate · E place · Esc cancel') + (e.moving ? ' · moving' : '');
+    $('#placebar').classList.toggle('hidden', !e.on); if (!e.on) $('#nudge').classList.add('hidden'); document.body.classList.toggle('placing', !!e.on); if (!e.on) return;
+    $('#pl-store').classList.toggle('hidden', !e.moving); $('#nudge').classList.toggle('hidden', !T_()); $('#pl-undo').classList.toggle('hidden', !!e.moving); document.body.classList.add('placing');
+    $('#placebar .ph').textContent = (T_() ? 'Walk or tap the arrows to aim' : 'Walk to aim · R rotate · E place · Z undo · Esc cancel') + (e.moving ? ' · moving' : '');
     $('#pl-size').classList.toggle('hidden', !!e.kit); $('#pl-line').classList.toggle('hidden', !e.line_ok); $('#pl-line').classList.toggle('on', !!e.line);
     $('#emotewheel').classList.add('hidden');
   });
@@ -206,10 +224,10 @@ export function initUI({ initAudio }) {
       const pct = !nd ? 100 : Math.round(Math.min(1, (pts - LEVEL_AT[lvl]) / (nd.pts[1] - LEVEL_AT[lvl])) * 100);
       const needs = nd ? `Next: ${nd.pts[0] >= nd.pts[1] ? '✔' : '❤'} ${Math.floor(nd.pts[0])}/${nd.pts[1]} · ${nd.days[0] >= nd.days[1] ? '✔' : '📅'} ${nd.days[0]}/${nd.days[1]} days · ${nd.kinds[0] >= nd.kinds[1] ? '✔' : '🎲'} ${nd.kinds[0]}/${nd.kinds[1]} kinds` : 'Best friends forever!';
       const w = fr && wishOf(s.id);
-      return `<div class="card sp ${known ? '' : 'locked'}" style="--c:${s.color}">${fr ? '<span class="tag">Friend</span>' : ''}${w ? '<span class="wdot" title="Has a wish">🌟</span>' : ''}<div class="face">${known ? s.icon : '?'}</div><span class="nm">${known ? s.id : '???'}</span><span class="meta">${known ? s.blurb : 'Keep exploring to find me!'}</span>${known ? `<span class="meta fav">Loves ${COLOR_ICON[s.fav.berry]} ${s.fav.berry} berries · ${COLOR_ICON[s.fav.gem]} ${s.fav.gem} gems</span><span class="meta lvl"><b>${LEVEL_NAME[lvl]}</b> · Lv ${lvl}/${MAX_LEVEL}</span><span class="lbar"><i style="width:${pct}%"></i></span>${fr ? `<span class="meta need">${needs}</span>` : ''}${log.length ? `<span class="meta things"><b>Things we did</b>${log.map(x => `<span>• ${x.t}</span>`).join('')}</span>` : ''}${w ? `<span class="meta wish">🌟 ${w.text}${w.type === 'gift' ? ` (${w.p}/${w.n})` : ''}</span>` : ''}` : ''}</div>`;
+      return `<div class="card sp ${known ? '' : 'locked'}" style="--c:${s.color}">${fr ? '<span class="tag">Friend</span>' : ''}${w ? '<span class="wdot" title="Has a wish">🌟</span>' : ''}<div class="face">${known ? s.icon : '?'}</div><span class="nm">${known ? s.id : '???'}</span><span class="meta">${known ? s.blurb : 'Keep exploring to find me!'}</span>${known ? `<span class="meta fav">Loves ${COLOR_ICON[s.fav.berry]} ${s.fav.berry} berries · ${COLOR_ICON[s.fav.gem]} ${s.fav.gem} gems</span><span class="meta lvl"><b>${LEVEL_NAME[lvl]}</b> · Lv ${lvl}/${MAX_LEVEL}</span><span class="hearts" aria-label="Friendship ${lvl} of ${MAX_LEVEL}">${Array.from({ length: MAX_LEVEL }, (_, k) => k < lvl ? '<i class="on">♥</i>' : k === lvl ? `<i class="part" style="--f:${pct}%">♥</i>` : '<i>♥</i>').join('')}</span><span class="lbar"><i style="width:${pct}%"></i></span><span class="meta need">${needs}</span>${log.length ? `<span class="meta things"><b>Things we did</b>${log.map(x => `<span>• ${x.t}</span>`).join('')}</span>` : ''}${w ? `<span class="meta wish">🌟 ${w.text}${w.type === 'gift' ? ` (${w.p}/${w.n})` : ''}</span>` : ''}` : ''}</div>`;
     }).join('');
     const reward = state.milestones.m_journal ? '<p class="sub">🏆 Journal complete! Golden Halo unlocked.</p>' : `<p class="sub">Discover all ${total} to unlock a special 😇 Golden Halo!</p>`;
-    return panel('Creature Journal', ['#6ee0b0', '#32b886'], `<p class="sub">Discovered ${seen}/${total} · Friends ${friends}/${total}</p>${reward}<div class="grid">${cards}</div>`);
+    return panel('Creature Journal', ['#6ee0b0', '#32b886'], `<p class="sub">Discovered ${seen}/${total} · Friends ${friends}/${total} · ♥ ${SPECIES.reduce((a, x) => a + lvlOf(x.id), 0)}/${total * MAX_LEVEL} total friendship</p>${reward}<div class="grid">${cards}</div>${(state.islandLog || []).length ? `<h3 class="h3">Our island</h3><div class="gitems">${state.islandLog.slice(-5).reverse().map(x => `<span class="gi">🏡 ${x.t}</span>`).join('')}</div>` : ''}`);
   }
 
   // ---- wardrobe ----
@@ -255,7 +273,7 @@ export function initUI({ initAudio }) {
     const mk = d => {
       const n = state.decorInv[d.id] || 0, placed = state.decor.filter(x => x.id === d.id).length;
       const act = dtab === 'shop'
-        ? `<button class="btn sun sm" data-buy="${d.id}">Buy 🌸 ${d.price}</button>${n ? `<button class="btn mint sm" data-place="${d.id}">Place (${n})</button>` : ''}`
+        ? `${n ? `<button class="btn mint sm" data-place="${d.id}">Place (${n})</button>` : ''}<button class="btn sun sm" data-buy="${d.id}">Buy 🌸 ${d.price}</button>`
         : (n ? `<button class="btn mint sm" data-place="${d.id}">Place (${n})</button>` : `<span class="meta">🔒 ${d.gift || 'Buy in the shop'}</span>`);
       return `<div class="card dc">${DECOR_SVG[d.id] ? `<span class="big svg">${DECOR_SVG[d.id]}</span>` : decIcon(d)}<span class="nm">${d.name}</span><span class="meta">+${d.charm} charm${placed ? ` · ${placed} placed` : ''}${d.line ? ' · line' : ''}</span><div class="acts">${act}</div></div>`;
     };
@@ -270,7 +288,7 @@ export function initUI({ initAudio }) {
       body = `<div class="gallery"><div class="gscore"><b>${c}</b><span>Island Charm</span></div><div class="gcats">${DECOR_CATS.map(k => `<div class="gc"><span>${k.icon}</span><b>${by[k.id] || 0}</b><small>${k.id}</small></div>`).join('')}</div></div><h3 class="h3">Your island collection</h3><div class="gitems">${Object.entries(names).map(([id, n]) => `<span class="gi">${DECOR_BY_ID[id].icon} ${DECOR_BY_ID[id].name} ×${n}</span>`).join('') || '<p class="sub">Place something to start your gallery!</p>'}</div><p class="sub">Unlocked ${Object.keys(state.placedTypes || {}).length}/${DECOR.length} kinds · ${Object.values(state.charmMs).length}/${CHARM_MS.length} charm rewards</p>`;
     }
     const pct = nx ? Math.min(100, Math.round(c / nx.at * 100)) : 100;
-    const p = panel('My Island', ['#7fe0c8', '#2fb6a0'], `<p class="sub">🌸 <span class="petal-count">${state.petals}</span> petals · ${state.decor.length} placed</p><div class="charm"><b>🏡 Island Charm ${c}</b><span class="lbar big"><i style="width:${pct}%"></i></span><small>${nx ? `Next reward at ${nx.at}: ${nx.text} (+${nx.petals} 🌸)` : 'You earned every charm reward!'}</small></div><div class="tabs"><button class="tab ${dtab === 'shop' ? 'on' : ''}" data-dt="shop">🛍️ Shop</button><button class="tab ${dtab === 'mine' ? 'on' : ''}" data-dt="mine">📦 My items (${have})</button><button class="tab ${dtab === 'gallery' ? 'on' : ''}" data-dt="gallery">🖼️ Gallery</button></div>${body}<p class="sub">Tip: ${T_() ? 'tap Place, use the stick to aim, then Place again.' : 'press Place, walk to aim, then press E.'} To move one later, stand right next to it and ${giveWord()}, or use My items.</p>`);
+    const p = panel('My Island', ['#7fe0c8', '#2fb6a0'], `<p class="sub">🌸 <span class="petal-count">${state.petals}</span> petals · ${state.decor.length} placed</p><div class="charm"><b>🏡 Island Charm ${c}</b><span class="lbar big"><i style="width:${pct}%"></i></span><small>${nx ? `Next reward at ${nx.at}: ${nx.text} (+${nx.petals} 🌸)` : 'You earned every charm reward!'}</small></div><div class="tabs"><button class="tab ${dtab === 'shop' ? 'on' : ''}" data-dt="shop">🛍️ Shop</button><button class="tab ${dtab === 'mine' ? 'on' : ''}" data-dt="mine">📦 My items (${have})</button><button class="tab ${dtab === 'gallery' ? 'on' : ''}" data-dt="gallery">🖼️ Gallery</button></div>${body}<p class="sub">Tip: ${T_() ? 'tap Place, walk or use the arrows to aim, then Place again.' : 'press Place, walk to aim, then press E. Walls and doors snap to floor edges. Z undoes.'} To move one later, stand right next to it and ${giveWord()}, or use My items.</p>`);
     p.querySelectorAll('[data-dc]').forEach(b => b.onclick = () => { dcat = b.dataset.dc; rerender('decor'); });
     p.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const i = +b.dataset.mv; close(); moveDecor(i); });
     p.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { storeIndex(+b.dataset.st); sfx.click(); });
