@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { fbm } from './noise.js';
 import { POND, pathMask, meadowMask, SUMMIT, routeDist } from './nature/features.js';
 import { tickWind } from './nature/wind.js';
+import { onTierChange, setCaster } from './quality.js';
 
 export const WORLD = 128; // world size in units
 const RES = 256;          // grid resolution
@@ -97,7 +98,10 @@ export function buildTerrain(scene) {
   }
   const pathTex = new THREE.DataTexture(pd8, PN, PN, THREE.RGBAFormat); pathTex.magFilter = THREE.LinearFilter; pathTex.minFilter = THREE.LinearFilter; pathTex.generateMipmaps = false; pathTex.needsUpdate = true;
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0 });
+  const uDetail = { value: 1 }; let nearD = 32; // quality: close-range ground detail layers on/off, distance of the high-res chunk ring
+  onTierChange((p) => { uDetail.value = p.terrainDetail ? 1 : 0; nearD = p.terrainNear; });
   mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uDetail = uDetail;
     sh.uniforms.uPath = { value: pathTex };
     sh.uniforms.uPond = { value: new THREE.Vector4(POND.x, POND.z, POND.r, POND_LEVEL) };
     sh.vertexShader = sh.vertexShader
@@ -107,7 +111,7 @@ export function buildTerrain(scene) {
         vP = aMask; vLip = aLip; vFoot = aFoot; vAO = aAO; vW = position; vN = normal;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform vec4 uPond; uniform sampler2D uPath; varying float vAO; varying float vLip; varying float vFoot; varying float vP; varying vec3 vW; varying vec3 vN;
+        uniform float uDetail; uniform vec4 uPond; uniform sampler2D uPath; varying float vAO; varying float vLip; varying float vFoot; varying float vP; varying vec3 vW; varying vec3 vN;
         float h21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
         float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
           return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x), f.y); }
@@ -136,15 +140,17 @@ export function buildTerrain(scene) {
         grass *= .86 + .26*fine; grass *= .94 + .1*streak;
         grass *= .82 + .36*smoothstep(.2,.8,fb(wq*.9+3.));
         // stylised painted clumps: voronoi tufts with lighter hearts, dark seams and blade strokes (fades with distance)
+        vec3 g2 = grass; float dn = 0.;
+        if (uDetail > .5) {
         float dfade = smoothstep(48., 12., length(vViewPosition)) * smoothstep(.35, .1, 1. - normalize(vN).y);
         vec3 v1 = vor(xz*1.1 + (wq-xz)*.5), v2 = vor(xz*.21+5.);
         // flat painted patches (no round dabs): each polygonal cell gets a small tint shift
-        vec3 g2 = grass * mix(vec3(1.), mix(vec3(.93,.98,.92), vec3(1.07,1.05,.9), v1.y), dfade);
+        g2 = grass * mix(vec3(1.), mix(vec3(.93,.98,.92), vec3(1.07,1.05,.9), v1.y), dfade);
         g2 *= 1. + dfade*(v1.z-.5)*.1;
         g2 = mix(g2, g2*vec3(1.14,1.05,.7), v2.y*.4);
         g2 = mix(g2, g2*vec3(.84,.98,1.0), smoothstep(.55,.9,v2.z)*.3);
         // crisp close-range layer (no extra triangles): grain, light/dark flecks and clover sprites within ~10 m
-        float dn = smoothstep(14., 3., length(vViewPosition));
+        dn = smoothstep(14., 3., length(vViewPosition));
         vec2 cc = floor(xz*40.); float grn = h21(cc);
         g2 *= 1. + dn*((grn-.5)*.2 + step(.94, grn)*.12 - step(grn,.05)*.15);
         vec2 cl = xz*5.5, ci = floor(cl), cf = fract(cl) - .5; float ch = h21(ci+11.);
@@ -152,6 +158,7 @@ export function buildTerrain(scene) {
         float lobe = max(max(smoothstep(.17,.12,length(cf-co-vec2(.0,.1))), smoothstep(.17,.12,length(cf-co-vec2(.09,-.06)))), smoothstep(.17,.12,length(cf-co-vec2(-.09,-.06))));
         g2 = mix(g2, g2*vec3(.82,1.12,.82) + .03, lobe*step(.78,ch)*dn*.9);
         g2 = mix(g2, vec3(.95,.93,.8), smoothstep(.07,.04,length(cf-co))*step(.96,ch)*dn);   // tiny white clover bloom
+        }
         grass = g2;
         // sand with ripples
         vec3 sand = mix(vec3(.95,.84,.6), vec3(.99,.91,.7), n2);
@@ -228,20 +235,33 @@ export function buildTerrain(scene) {
   for (let cz = 0; cz < CH; cz++) for (let cx = 0; cx < CH; cx++) {
     const x0 = -WORLD / 2 + cx * SZ, z0 = -WORLD / 2 + cz * SZ;
     const lod = new THREE.Group();
-    const hi = new THREE.Mesh(chunkGeo(x0, z0, SZ, 32, 0.6), mat), lo = new THREE.Mesh(chunkGeo(x0, z0, SZ, 10, 0.9), mat);
-    for (const m of [hi, lo]) { m.receiveShadow = true; m.castShadow = true; }
-    hi.geometry.computeBoundingSphere(); lo.geometry.computeBoundingSphere();
-    lod.add(hi, lo); lod.userData.hi = hi; lod.userData.lo = lo;
+    // the 32x32 'hi' chunk is built lazily the first time the camera gets near (it is ~85% of terrain build time); the cheap 10x10 one is always there
+    const lo = new THREE.Mesh(chunkGeo(x0, z0, SZ, 10, 0.9), mat);
+    lo.receiveShadow = true; setCaster(lo, 3, true); lo.geometry.computeBoundingSphere(); // terrain self-shadowing (hill/cliff shadows) is a high-tier feature
+    lod.add(lo); lod.userData.hi = null; lod.userData.lo = lo; lod.userData.x0 = x0; lod.userData.z0 = z0;
     lod.userData.c = new THREE.Vector3(x0 + SZ / 2, 0, z0 + SZ / 2);
     group.add(lod);
   }
   // LOD distance is measured from each LOD object origin (0,0,0), so drive levels manually from chunk centres.
-  const cp = new THREE.Vector3();
-  const update = (camera) => { camera.getWorldPosition(cp); for (const l of group.children) { const c = l.userData.c, d = Math.hypot(c.x - cp.x, c.z - cp.z); const near = d < 32 + SZ * 0.5; l.userData.hi.visible = near; l.userData.lo.visible = !near; } };
+  const cp = new THREE.Vector3(); let budget = Infinity;   // first frame builds every nearby chunk at once, afterwards one per frame
+  const buildHi = (l) => {
+    const hi = new THREE.Mesh(chunkGeo(l.userData.x0, l.userData.z0, SZ, 32, 0.6), mat);
+    hi.receiveShadow = true; setCaster(hi, 3, true); hi.geometry.computeBoundingSphere(); hi.visible = false;
+    l.add(hi); l.userData.hi = hi;
+  };
+  const update = (camera) => {
+    camera.getWorldPosition(cp);
+    for (const l of group.children) {
+      const c = l.userData.c, d = Math.hypot(c.x - cp.x, c.z - cp.z), near = d < nearD + SZ * 0.5;
+      if (!l.userData.hi && d < nearD + SZ * 0.5 + 14 && budget > 0) { buildHi(l); budget--; }   // pre-build a little before it is needed
+      if (l.userData.hi) { l.userData.hi.visible = near; l.userData.lo.visible = !near; } else l.userData.lo.visible = true;
+    }
+    budget = 1;
+  };
   const prev = scene.onBeforeRender;
   scene.onBeforeRender = function (r, s, camera, ...rest) { prev && prev.call(this, r, s, camera, ...rest); update(camera); };
   const mesh = group;
-  tickWind(group.children[0].userData.hi);
+  tickWind(group.children[0].userData.lo);
   scene.add(group);
   return mesh;
 }

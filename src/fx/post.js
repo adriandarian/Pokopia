@@ -33,6 +33,24 @@ const GradeShader = {
     }`,
 };
 
+// Low tier: grade + ACES tone mapping + sRGB in ONE fullscreen pass (no bloom, no separate OutputPass).
+const GradeOutShader = {
+  uniforms: Object.assign(THREE.UniformsUtils.clone(GradeShader.uniforms), { toneMappingExposure: { value: 1 } }),
+  vertexShader: GradeShader.vertexShader,
+  fragmentShader: `#include <common>
+    #include <tonemapping_pars_fragment>
+    ` + GradeShader.fragmentShader.replace('void main(){', 'void main(){').replace(
+      'gl_FragColor=vec4(max(col,0.),c.a);',
+      `col=max(col,0.);
+      #ifdef ACES_FILMIC_TONE_MAPPING
+        col=ACESFilmicToneMapping(col);
+      #endif
+      gl_FragColor=vec4(col,c.a);
+      #ifdef SRGB_TRANSFER
+        gl_FragColor=sRGBTransferOETF(gl_FragColor);
+      #endif`),
+};
+
 export function setupPost(renderer, scene, camera) {
   const size = renderer.getSize(new THREE.Vector2());
   const pr = renderer.getPixelRatio();
@@ -45,22 +63,53 @@ export function setupPost(renderer, scene, camera) {
   composer.addPass(bloom);
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
-  composer.addPass(new OutputPass());
+  const output = new OutputPass();
+  composer.addPass(output);
+  const gradeOut = new ShaderPass(new THREE.ShaderMaterial({
+    uniforms: GradeOutShader.uniforms, vertexShader: GradeOutShader.vertexShader, fragmentShader: GradeOutShader.fragmentShader,
+    defines: { SRGB_TRANSFER: '', ACES_FILMIC_TONE_MAPPING: '' }, toneMapped: false,
+  }));
+  gradeOut.renderToScreen = false;
+  composer.addPass(gradeOut);
 
-  addEventListener('resize', () => composer.setSize(innerWidth, innerHeight));
+  let mode = 'full', bloomScale = 1;
+  const fitBloom = () => { // bloom resolution relative to the composer's effective pixels
+    const w = composer._width * composer._pixelRatio, h = composer._height * composer._pixelRatio;
+    bloom.setSize(Math.max(2, Math.round(w * bloomScale)), Math.max(2, Math.round(h * bloomScale)));
+  };
+  const resize = () => { composer.setSize(innerWidth, innerHeight); fitBloom(); };
+  addEventListener('resize', resize);
 
   const api = {
-    composer,
+    composer, bloom,
+    /** Apply a quality profile live: pixel ratio, MSAA, which passes run, bloom resolution. */
+    setProfile(p) {
+      mode = p.post;
+      bloom.enabled = grade.enabled = output.enabled = mode !== 'lite';
+      gradeOut.enabled = mode === 'lite';
+      bloomScale = mode === 'half' ? 0.5 : 1;
+      // medium: 3 blur mips instead of 5 (4 fewer fullscreen passes); the unused mips are tinted to black in the composite
+      const mips = mode === 'half' ? 3 : 5;
+      bloom.nMips = mips; bloom.bloomTintColors.forEach((c, i) => c.setScalar(i < mips ? 1 : 0));
+      for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
+        if (rt.samples !== p.msaa) { rt.samples = p.msaa; rt.dispose(); }
+      }
+      composer.setPixelRatio(renderer.getPixelRatio());
+      composer.setSize(innerWidth, innerHeight);
+      fitBloom();
+    },
     render(dt) {
       const s = scene.userData.sky;
+      renderer.toneMappingExposure = s ? s.exp : 1;
+      const g = mode === 'lite' ? gradeOut.uniforms : grade.uniforms;
       if (s) {
-        renderer.toneMappingExposure = s.exp;
         bloom.strength = s.bloom;
-        grade.uniforms.tint.value.copy(s.tint);
-        grade.uniforms.lift.value = 0.01 * (s.night || 0);
-        grade.uniforms.sat.value = 1.05 - 0.1 * (s.dusk || 0);
-        grade.uniforms.contrast.value = 1.12 - 0.07 * (s.night || 0);
+        g.tint.value.copy(s.tint);
+        g.lift.value = 0.01 * (s.night || 0);
+        g.sat.value = 1.05 - 0.1 * (s.dusk || 0);
+        g.contrast.value = 1.12 - 0.07 * (s.night || 0);
       }
+      gradeOut.uniforms.toneMappingExposure.value = renderer.toneMappingExposure;
       composer.render(dt);
     },
   };

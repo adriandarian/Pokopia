@@ -8,10 +8,28 @@
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#9fd8ff;font-family:ui-rounded,"SF Pro Rounded","Nunito","Arial Rounded MT Bold","Trebuchet MS",system-ui,sans-serif;touch-action:none}
   canvas{display:block}
+  #loading{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+    background:radial-gradient(120% 90% at 50% 0%,#c9ecff 0%,#9fd8ff 45%,#ffd9ec 100%);color:#4a3358;transition:opacity .6s ease;touch-action:none}
+  #loading.done{opacity:0;pointer-events:none}
+  #loading .ld-logo{font-size:clamp(44px,11vw,84px);font-weight:900;letter-spacing:1px;color:#fff;text-shadow:0 4px 0 #ff7eb6,0 8px 0 rgba(120,70,140,.28),0 14px 24px rgba(60,30,90,.25);animation:ldBob 1.6s ease-in-out infinite}
+  #loading .ld-bar{width:min(72vw,360px);height:18px;border-radius:999px;background:rgba(255,255,255,.7);border:3px solid #fff;box-shadow:0 5px 0 rgba(120,70,140,.2),0 10px 22px rgba(60,30,90,.15);overflow:hidden}
+  #loading .ld-fill{height:100%;width:6%;border-radius:999px;background:linear-gradient(90deg,#ff7eb6,#ffd24a,#5fd9a8);background-size:200% 100%;transition:width .35s ease-out;animation:ldSlide 1.4s linear infinite}
+  #loading .ld-tx{font-weight:800;font-size:17px;opacity:.85;min-height:1.3em;text-align:center;padding:0 16px}
+  @keyframes ldBob{50%{transform:translateY(-6px) rotate(-1.5deg)}}
+  @keyframes ldSlide{to{background-position:-200% 0}}
+  @media (prefers-reduced-motion:reduce){#loading .ld-logo,#loading .ld-fill{animation:none}}
 </style>
 </head>
 <body>
 <!-- All UI (HUD, title, panels) is built by src/ui/ui.js into #ui-root. Legacy score node kept hidden for main.js. -->
+<div id="loading" role="status" aria-live="polite"><div class="ld-logo">Pokopia</div><div class="ld-bar"><div class="ld-fill" id="ld-fill"></div></div><div class="ld-tx" id="ld-tx">Waking up the island…</div></div>
+<script>
+  // tiny loading-screen API used by src/main.js (progress 0..1, friendly label); runs before any module loads
+  window.__loading = {
+    set(p, label) { var f = document.getElementById('ld-fill'), t = document.getElementById('ld-tx'); if (f) f.style.width = Math.max(6, Math.min(100, p * 100)) + '%'; if (t && label) t.textContent = label; },
+    done() { var e = document.getElementById('loading'); if (!e) return; e.classList.add('done'); setTimeout(function () { e.remove(); }, 700); }
+  };
+</script>
 <div id="score" hidden></div>
 <script type="module" src="/src/main.js"></script>
 </body>

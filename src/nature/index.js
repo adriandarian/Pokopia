@@ -10,11 +10,14 @@ import { buildProps } from './props.js';
 import { world } from '../chars/fx.js';
 import { buildPetals } from './petals.js';
 import { modelGeo, modelsReady } from './models.js';
+import { onTierChange, setCaster } from '../quality.js';
 
 /** CPU frustum + distance culling for instanced foliage (fewer triangles in both main and shadow passes). */
 function setupLod(scene, meshes) {
   const fr = new THREE.Frustum(), pm = new THREE.Matrix4(), sph = new THREE.Sphere(), lastP = new THREE.Vector3(1e9, 0, 0), lastD = new THREE.Vector3();
   const fwd = new THREE.Vector3(); let lastT = 0, lastV = -1;
+  let treeK = 1, smallK = 1, dens = 100; // quality: cull distance multipliers + share (%) of small flora kept
+  onTierChange((p) => { treeK = p.flora.tree; smallK = p.flora.small; dens = Math.round(p.flora.density * 100); lastV = -2; });
   const prev = scene.onBeforeRender;
   scene.onBeforeRender = function (r, s, camera, ...rest) {
     prev && prev.call(this, r, s, camera, ...rest);
@@ -27,10 +30,11 @@ function setupLod(scene, meshes) {
     for (const m of meshes) {
       if (!m.instanceColor) continue;
       const st = m.userData.store, rad = m.userData.rad, ma = m.instanceMatrix.array, ca = m.instanceColor.array;
-      const maxD = rad > 2 ? 52 : 30; let n = 0;
+      const maxD = rad > 2 ? 52 * treeK : 30 * smallK, thin = m.userData.thin && dens < 100; let n = 0;
       for (let i = 0; i < st.n; i++) {
         const x = st.pos[i * 3], y = st.pos[i * 3 + 1], z = st.pos[i * 3 + 2], rr = rad * st.sc[i] + 14;
         const dx = x - cp.x, dz = z - cp.z; if (dx * dx + dz * dz > (maxD + rr) * (maxD + rr)) continue;
+        if (thin && (i * 7919) % 100 >= dens) continue;
         sph.center.set(x, y + rad * st.sc[i] * 0.5, z); sph.radius = rr; if (!fr.intersectsSphere(sph)) continue;
         if (rad <= 1.6 && CL.length) { let cut = false; for (const c of CL) { const ex = x - c.x, ez = z - c.z, rr2 = c.r + 0.3; if (ex * ex + ez * ez < rr2 * rr2) { cut = true; break; } } if (cut) continue; }
         for (let k = 0; k < 16; k++) ma[n * 16 + k] = st.mat[i * 16 + k];
@@ -52,9 +56,9 @@ export function scatterNature(scene) {
   const mkMat = (opts, side = THREE.FrontSide) => applyWind(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side, emissive: '#27421a', emissiveIntensity: 0.38 }), opts);
   const group = [];
   const lods = [];
-  function inst(geo, mat, max, { cast = true, recv = true } = {}) {
+  function inst(geo, mat, max, { cast = true, recv = true, sc = 2, thin = false } = {}) {
     const m = new THREE.InstancedMesh(geo, mat, max);
-    m.count = 0; m.castShadow = cast; m.receiveShadow = recv; tickWind(m);
+    m.count = 0; setCaster(m, sc, cast); m.receiveShadow = recv; m.userData.thin = thin; tickWind(m);
     geo.computeBoundingSphere(); m.userData.rad = geo.boundingSphere.radius;
     const store = { mat: new Float32Array(max * 16), col: new Float32Array(max * 3), sc: new Float32Array(max), pos: new Float32Array(max * 3), n: 0 };
     m.userData.store = store; lods.push(m);
@@ -73,13 +77,13 @@ export function scatterNature(scene) {
   const stdMat = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, emissive: '#2a3a1c', emissiveIntensity: 0.22 });
 
   // species meshes
-  const oak = inst(S.roundTree(['#5fbf45', '#78d255', '#4aa83c'], 1), mkMat({ amp: 0.03, heightGain: 0.012 }), 140);
-  const oak2 = inst(S.roundTree(['#7ec94a', '#9ad85a', '#68b843'], 2), mkMat({ amp: 0.03, heightGain: 0.012 }), 140);
-  const blossom = inst(S.blossomTree(3), mkMat({ amp: 0.03, heightGain: 0.012 }, THREE.DoubleSide), 30);
-  const pine = inst(S.pineTree(1), mkMat({ amp: 0.015, heightGain: 0.012 }), 120);
-  const palm = inst((false && modelGeo('tree_palmBend', { h: 5.0, colors: { leafsGreen: '#52b848', woodBark: '#b98a58' }, aw: 'canopy', smooth: 0.45, shade: [0.85, 1.15] })) || S.palmTree(1), mkMat({ amp: 0.05, heightGain: 0.025, speed: 1.2 }, THREE.DoubleSide), 60);
-  const bushM = inst(S.bush(['#4fb447', '#68cb52'], 1), mkMat({ amp: 0.03, heightGain: 0.02 }), 200);
-  const berry = inst(S.berryBush(3), mkMat({ amp: 0.03, heightGain: 0.02 }), 60);
+  const oak = inst(S.roundTree(['#5fbf45', '#78d255', '#4aa83c'], 1), mkMat({ amp: 0.03, heightGain: 0.012 }), 140, { sc: 1 });
+  const oak2 = inst(S.roundTree(['#7ec94a', '#9ad85a', '#68b843'], 2), mkMat({ amp: 0.03, heightGain: 0.012 }), 140, { sc: 1 });
+  const blossom = inst(S.blossomTree(3), mkMat({ amp: 0.03, heightGain: 0.012 }, THREE.DoubleSide), 30, { sc: 1 });
+  const pine = inst(S.pineTree(1), mkMat({ amp: 0.015, heightGain: 0.012 }), 120, { sc: 1 });
+  const palm = inst((false && modelGeo('tree_palmBend', { h: 5.0, colors: { leafsGreen: '#52b848', woodBark: '#b98a58' }, aw: 'canopy', smooth: 0.45, shade: [0.85, 1.15] })) || S.palmTree(1), mkMat({ amp: 0.05, heightGain: 0.025, speed: 1.2 }, THREE.DoubleSide), 60, { sc: 1 });
+  const bushM = inst(S.bush(['#4fb447', '#68cb52'], 1), mkMat({ amp: 0.03, heightGain: 0.02 }), 200, { thin: true });
+  const berry = inst(S.berryBush(3), mkMat({ amp: 0.03, heightGain: 0.02 }), 60, { thin: true });
   const M = modelsReady();
   const rk = (n, o) => (M && modelGeo(n, Object.assign({ w: 2.0, moss: 0.3, smooth: 0.55, shade: [0.92, 1.18] }, o))) || null;
   const rGeo = [rk('rock_largeA', { h: 1.35 }), rk('rock_largeC', { h: 1.2 }), rk('rock_largeE', { h: 1.3 }), rk('stone_largeA', { h: 1.2 }), rk('rock_tallA', { w: 1.5, h: 2.0 })];
@@ -87,9 +91,9 @@ export function scatterNature(scene) {
   const pickRock = (big) => rockArr[big && rnd() < 0.35 ? 4 : (rnd() * 4 | 0)];
   const rockCount = () => rockArr.reduce((a, m) => a + m.count, 0);
 
-  const shrooms = inst((M && modelGeo('mushroom_redGroup', { h: 0.42, shade: [0.85, 1.1] })) || S.mushroom(), stdMat(), 200, { cast: false });
-  const ferns = inst(S.fern('#3d9a4a'), mkMat({ amp: 0.05, heightGain: 0.06 }, THREE.DoubleSide), 520, { cast: false });
-  const reeds = inst(S.reed(), mkMat({ amp: 0.06, heightGain: 0.05 }), 80);
+  const shrooms = inst((M && modelGeo('mushroom_redGroup', { h: 0.42, shade: [0.85, 1.1] })) || S.mushroom(), stdMat(), 200, { cast: false, thin: true });
+  const ferns = inst(S.fern('#3d9a4a'), mkMat({ amp: 0.05, heightGain: 0.06 }, THREE.DoubleSide), 520, { cast: false, thin: true });
+  const reeds = inst(S.reed(), mkMat({ amp: 0.06, heightGain: 0.05 }), 80, { thin: true });
 
   // trees: groves, meadows with lone trees, landmarks
   const obs = world.obstacles = []; if (typeof window !== 'undefined') { window.__obstacles = obs; window.__world = world; } // camera-occlusion list for the follow camera: {x, z, r, top(world Y)}
@@ -196,7 +200,7 @@ export function scatterNature(scene) {
   }
   // flowers in patches
   const pal = [['#ff7eb6', '#ffe36a'], ['#ffd23f', '#e8892b'], ['#ffffff', '#ffd23f'], ['#b28dff', '#fff2a0'], ['#ff9f43', '#7a3b1a'], ['#7ec8ff', '#fff2a0']];
-  const fl = pal.map((p, pi) => inst(S.flower(p[0], p[1], pi === 1 || pi === 4), Object.assign(mkMat({ amp: 0.06, heightGain: 0.1, speed: 2 }), { roughness: 0.42 }), 1300, { cast: false }));
+  const fl = pal.map((p, pi) => inst(S.flower(p[0], p[1], pi === 1 || pi === 4), Object.assign(mkMat({ amp: 0.06, heightGain: 0.1, speed: 2 }), { roughness: 0.42 }), 1300, { cast: false, thin: true }));
   tries = 0; let nf = 0;
   while (tries++ < 40000 && nf < 6500) {
     const x = (rnd() - 0.5) * WORLD * 0.92, z = (rnd() - 0.5) * WORLD * 0.92, h = heightAt(x, z);

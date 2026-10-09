@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { dappleKey, setCaster } from '../quality.js';
 import { toonUnique, toon, part, sphereGeo, Mat, mergeColored, bake } from './toon.js';
 import { addFace, Blinker } from './face.js';
 
@@ -42,7 +43,7 @@ function hairCutMat(mat, layer) {
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + CUT_GLSL)
       .replace('void main() {', 'void main() {\n if (normalize(vObjPos).y < hairCut(normalize(vObjPos), ' + layer.toFixed(3) + ')) discard;');
   };
-  mat.customProgramCacheKey = () => 'toonhair' + layer;
+  mat.customProgramCacheKey = () => 'toonhair' + layer + dappleKey();
   return mat;
 }
 function hairOutline(mesh, layer, thick) {
@@ -296,7 +297,7 @@ export function buildHero(opts = {}) {
   const blob = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: '#10200a', map: softBlob(), transparent: true, opacity: 0.5, depthWrite: false }));
   blob.position.y = 0.06; blob.renderOrder = 1; root.add(blob);
-  root.traverse(o => { if (o.isMesh && !o.userData.isOutline) o.castShadow = true; });
+  root.traverse(o => { if (o.isMesh && !o.userData.isOutline) { const n = (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; setCaster(o, n < 900 ? 2 : 1, true); } }); // low tier: tiny parts (eyes, buttons) skip the shadow map
   const bk = bake(root);
 
   // ------- animation state -------

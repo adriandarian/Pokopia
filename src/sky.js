@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WORLD, heightAt } from './terrain.js';
 import { buildAmbientLife } from './fx/life.js';
 import { world } from './chars/fx.js';
+import { onTierChange, dappleKey, setDappleFlag } from './quality.js';
 
 const WATER_Y = -0.4;
 const DAY_SECONDS = 660, NIGHT_SECONDS = 150; // real seconds for daylight (5.2h-19.2h) and for night: ~13.5 min/day, mostly golden daylight
@@ -69,17 +70,23 @@ function floorTexture() {
 
 // Global 'leaf dapple': modulates the sun's direct light with soft world-space noise in every lit material
 // (trees, grass, ground, props) via a ShaderChunk patch - no per-material work or extra uniforms needed.
-let dapplePatched = false;
-function patchDapple() {
-  if (dapplePatched) return; dapplePatched = true;
+let dappleBase = null;
+{ // three caches programs by parameters, not by ShaderChunk text, so the dapple state must be part of the key: make the default key of EVERY material (incl. terrain, standard, toon ...) aware of the dapple state
+  const orig = THREE.Material.prototype.customProgramCacheKey;
+  THREE.Material.prototype.customProgramCacheKey = function () { return orig.call(this) + dappleKey(); };
+}
+function patchDapple(on = true) {
   const SC = THREE.ShaderChunk;
-  SC.lights_pars_begin += `
+  if (!dappleBase) dappleBase = { pars: SC.lights_pars_begin, frag: SC.lights_fragment_begin };
+  setDappleFlag(on);
+  if (!on) { SC.lights_pars_begin = dappleBase.pars; SC.lights_fragment_begin = dappleBase.frag; return; }
+  SC.lights_pars_begin = dappleBase.pars + `
   float dpH(vec3 p){p=fract(p*.3183+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
   float dpN(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
     return mix(mix(mix(dpH(i),dpH(i+vec3(1,0,0)),f.x),mix(dpH(i+vec3(0,1,0)),dpH(i+vec3(1,1,0)),f.x),f.y),
                mix(mix(dpH(i+vec3(0,0,1)),dpH(i+vec3(1,0,1)),f.x),mix(dpH(i+vec3(0,1,1)),dpH(i+vec3(1,1,1)),f.x),f.y),f.z);}
   float sunDapple(vec3 wp){float n=dpN(wp*vec3(.55,.35,.55))*.6+dpN(wp*1.7)*.4;return mix(.8,1.,smoothstep(.3,.65,n));}`;
-  SC.lights_fragment_begin = SC.lights_fragment_begin.replace('getDirectionalLightInfo( directionalLight, directLight );',
+  SC.lights_fragment_begin = dappleBase.frag.replace('getDirectionalLightInfo( directionalLight, directLight );',
     `getDirectionalLightInfo( directionalLight, directLight );
 		#if UNROLLED_LOOP_INDEX == 0
 		directLight.color *= sunDapple( transpose( mat3( viewMatrix ) ) * ( -vViewPosition ) + cameraPosition );
@@ -87,7 +94,6 @@ function patchDapple() {
 }
 
 export function buildSky(scene) {
-  patchDapple();
   scene.background = new THREE.Color('#9fd8ff');
   scene.fog = new THREE.Fog('#a6d2f8', 160, 720);
   const hemi = new THREE.HemisphereLight('#cfeaff', '#7a9a5a', 1.1);
@@ -95,11 +101,20 @@ export function buildSky(scene) {
   const sun = new THREE.DirectionalLight('#fff1d0', 2.6);
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
-  const sc = sun.shadow.camera; const SH = 38; sc.left = -SH; sc.right = SH; sc.top = SH; sc.bottom = -SH; sc.near = 1; sc.far = 320;
+  let SH = 38, shEvery = 1, shFrame = 0, shLast = 0;
+  const sc = sun.shadow.camera; sc.left = -SH; sc.right = SH; sc.top = SH; sc.bottom = -SH; sc.near = 1; sc.far = 320;
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.05; sun.shadow.radius = 4; sun.shadow.blurSamples = 12;
   sun.shadow.intensity = 0.9; // soft, coloured shadows: the rest of the shadow darkness comes from hemi + fill
-  sun.shadow.autoUpdate = false; sun.shadow.needsUpdate = true; // re-render the shadow map every 2nd frame (halves ~560 shadow draw calls)
+  sun.shadow.autoUpdate = false; sun.shadow.needsUpdate = true; // shadow map is re-rendered on demand: every `shEvery`-th frame per quality tier
   scene.add(sun); scene.add(sun.target);
+  /** Quality hook: shadow resolution / extent / update rate (the map is re-created on size change). */
+  const applyShadow = (p) => {
+    const q = p.shadow;
+    SH = q.half; shEvery = q.every;
+    sc.left = -SH; sc.right = SH; sc.top = SH; sc.bottom = -SH; sc.updateProjectionMatrix();
+    if (sun.shadow.mapSize.x !== q.size) { sun.shadow.mapSize.set(q.size, q.size); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+    sun.shadow.needsUpdate = true; shLast = 0;
+  };
   // shadow frustum follows the player, snapped to shadow-texel increments in light space (no shimmer)
   const lR = new THREE.Vector3(), lU = new THREE.Vector3(), lc = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0);
   function placeSun(dir) {
@@ -234,14 +249,14 @@ export function buildSky(scene) {
       time: { value: 0 }, floorTex: { value: floorTex },
       shallow: { value: new THREE.Color('#7ff0e0') }, deep: { value: new THREE.Color('#1a6fc0') },
       zen: { value: state.zen }, hor: { value: state.hor }, sunCol: { value: state.sun }, sunDir: { value: state.dir },
-      light: { value: 1 },
+      light: { value: 1 }, uQ: { value: 2 },
     }]),
     vertexShader: `varying vec3 w;
       #include <fog_pars_vertex>
       void main(){vec4 wp=modelMatrix*vec4(position,1.);w=wp.xyz;vec4 mvPosition=viewMatrix*wp;gl_Position=projectionMatrix*mvPosition;
       #include <fog_vertex>
       }`,
-    fragmentShader: `uniform float time;uniform float light;uniform vec3 shallow,deep,zen,hor,sunCol,sunDir;uniform sampler2D floorTex;varying vec3 w;
+    fragmentShader: `uniform float time;uniform float light;uniform float uQ;uniform vec3 shallow,deep,zen,hor,sunCol,sunDir;uniform sampler2D floorTex;varying vec3 w;
       #include <fog_pars_fragment>
       float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
       float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
@@ -259,8 +274,8 @@ export function buildSky(scene) {
         g+=vec2(cos(dot(p,vec2(.7,.7))*1.7-t*1.6),cos(dot(p,vec2(.7,.7))*1.7-t*1.6))*.05;
         float a=vn(p*1.3+vec2(t*.3,-t*.2)),b=vn(p*1.3+vec2(5.2,1.3)-vec2(t*.25,t*.35));
         g+=vec2(a-.5,b-.5)*.35;
-        float a2=vn(p*3.7+vec2(-t*.5,t*.4)),b2=vn(p*3.7+vec2(9.,3.)+vec2(t*.45,t*.3));
-        g+=vec2(a2-.5,b2-.5)*.18;
+        if(uQ>.5){float a2=vn(p*3.7+vec2(-t*.5,t*.4)),b2=vn(p*3.7+vec2(9.,3.)+vec2(t*.45,t*.3));
+        g+=vec2(a2-.5,b2-.5)*.18;}
         return g;
       }
       void main(){
@@ -287,16 +302,18 @@ export function buildSky(scene) {
         col=mix(col,skyc,clamp(fres,0.,.66));
         vec3 Rs=reflect(-V,Ns); Rs.y=abs(Rs.y); float sds=max(dot(Rs,sunDir),0.);
         float spec=pow(sds,300.)*4.+pow(sds,60.)*.3+pow(sds,14.)*.12;
-        float sparkle=smoothstep(.55,.9,vn(w.xz*5.+time*vec2(.8,.5)))*smoothstep(.5,.95,vn(w.xz*2.3-time*.6));
-        float glit=smoothstep(.72,.95,vn(w.xz*11.+time*vec2(1.1,.7)))*smoothstep(.6,.95,vn(w.xz*3.1-time*.5));
+        float sparkle=0.,glit=0.;
+        if(uQ>.5) sparkle=smoothstep(.55,.9,vn(w.xz*5.+time*vec2(.8,.5)))*smoothstep(.5,.95,vn(w.xz*2.3-time*.6));
+        if(uQ>1.5) glit=smoothstep(.72,.95,vn(w.xz*11.+time*vec2(1.1,.7)))*smoothstep(.6,.95,vn(w.xz*3.1-time*.5));
         col+=sunCol*(spec*(.4+sparkle*1.6)+glit*pow(sds,10.)*2.2);
-        float streak=smoothstep(.62,.8,vn(vec2(w.x*.35+time*.12,w.z*.04)))*smoothstep(.55,.75,vn(w.xz*.6+time*.1))*smoothstep(3.,.8,dist/60.)*smoothstep(.3,1.2,depth);
+        float streak=0.;
+        if(uQ>1.5) streak=smoothstep(.62,.8,vn(vec2(w.x*.35+time*.12,w.z*.04)))*smoothstep(.55,.75,vn(w.xz*.6+time*.1))*smoothstep(3.,.8,dist/60.)*smoothstep(.3,1.2,depth);
         col=mix(col,vec3(.9,1.,1.)*(.4+.6*light),streak*.08*(1.-smoothstep(.8,3.,depth)));
         // shoreline: depth-faded foam with lace, thin bright leading edge, dark wet film
         float n=vn(w.xz*1.4+time*.2);
         float wash=.5+.5*sin(time*.9+n*3.);
         float edge=depth+n*.10;
-        float lace=smoothstep(.40,.75,vn(w.xz*7.+vec2(time*.15,-time*.1)));
+        float lace=.62; if(uQ>.5) lace=smoothstep(.40,.75,vn(w.xz*7.+vec2(time*.15,-time*.1)));
         float lead=smoothstep(.16,.0,edge)*(.6+.4*wash);
         float trail=smoothstep(.20+wash*.32,.02,edge)*(.35+.65*lace);
         float band=smoothstep(.05,.0,abs(edge-(.55+wash*.4))-.03)*.5*lace*smoothstep(1.,.3,depth);
@@ -371,7 +388,9 @@ export function buildSky(scene) {
         const isDay = state.hour >= 5.2 && state.hour < 19.2;
         state.hour = (state.hour + dt * (isDay ? 14 / DAY_SECONDS : 10 / NIGHT_SECONDS)) % 24;
       }
-      apply(); sun.shadow.needsUpdate = true;
+      apply();
+      shFrame++; const nowMs = performance.now();
+      if (shFrame % shEvery === 0 || nowMs - shLast > 70) { sun.shadow.needsUpdate = true; shLast = nowMs; } // never staler than ~70 ms
       water.material.uniforms.time.value = t; skyMat.uniforms.time.value = t;
       water.position.y = WATER_Y + 0.07 * (0.5 + 0.5 * Math.sin(t * 0.7)) + 0.03 * Math.sin(t * 0.31 + 1);
       driftX += dt * 1.3; cloudMat.uniforms.drift.value = driftX;
@@ -380,5 +399,11 @@ export function buildSky(scene) {
   };
   window.__sky = api;
   apply();
+  const nCloudPuffs = cg.instanceCount;
+  onTierChange((p) => {
+    patchDapple(p.dapple); applyShadow(p);
+    water.material.uniforms.uQ.value = p.water;
+    cg.instanceCount = Math.max(1, Math.round(nCloudPuffs * p.fx.clouds));
+  });
   return api;
 }

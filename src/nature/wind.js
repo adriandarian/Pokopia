@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { dappleKey } from '../quality.js';
 export const windTime = { value: 0 };
 let hooked = false;
 /** Adds vertex sway driven by attribute `aw` (0 = rigid, 1 = free tip). */
@@ -23,7 +24,7 @@ export function applyWind(mat, { amp = 0.05, heightGain = 0.012, speed = 1.5 } =
           transformed.y -= abs(k) * 0.15;
         }`);
   };
-  mat.customProgramCacheKey = () => 'wind' + amp + heightGain + speed;
+  mat.customProgramCacheKey = () => 'wind' + amp + heightGain + speed + dappleKey();
   return mat;
 }
 /** Call from any mesh's onBeforeRender to tick wind time. */

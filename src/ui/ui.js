@@ -12,6 +12,7 @@ import { ptsOf, nextAt, wishOf, activeWishText, lvlOf, nextNeeds, mem } from '..
 import { on, emit } from '../game/events.js';
 import { def, claim, allDone, newSet } from '../game/quests.js';
 import { sfx, initAudio as _ia } from '../game/audio.js';
+import { getTier, getEffectiveTier, setTier } from '../quality.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; };
@@ -290,7 +291,8 @@ export function initUI({ initAudio }) {
     const p = panel('Settings', ['#c7a6ff', '#8d5df0'], `
       <div class="setting"><label for="v1">Volume</label><input id="v1" type="range" min="0" max="1" step="0.05" value="${s.volume}"></div>
       <div class="setting"><label for="v2">Music</label><input id="v2" type="range" min="0" max="1" step="0.05" value="${s.music}"></div>
-      <div class="setting"><label>Quality</label><div class="seg">${['low', 'medium', 'high'].map(q => `<button class="tab ${s.quality === q ? 'on' : ''}" data-q="${q}">${q[0].toUpperCase() + q.slice(1)}</button>`).join('')}</div></div>
+      <div class="setting"><label>Quality</label><div class="seg">${['low', 'medium', 'high', 'auto'].map(q => `<button class="tab ${getTier() === q ? 'on' : ''}" data-q="${q}">${q[0].toUpperCase() + q.slice(1)}</button>`).join('')}</div></div>
+      <p class="sub" id="qnote">${getTier() === 'auto' ? `Auto picks what runs smoothly on this device (now: ${getEffectiveTier()}).` : 'Lower quality runs smoother on tablets and older computers.'}</p>
       <div class="setting"><label>Calm motion</label><button class="tab ${s.reduceMotion ? 'on' : ''}" id="rm">${s.reduceMotion ? 'On' : 'Off'}</button></div>
       <div class="setting"><label>Touch controls</label><div class="seg">${['auto', 'on', 'off'].map(q => `<button class="tab ${s.touch === q ? 'on' : ''}" data-tc="${q}">${q[0].toUpperCase() + q.slice(1)}</button>`).join('')}</div></div>
       <div class="setting"><label>Sound</label><button class="tab ${s.mute ? '' : 'on'}" id="mu">${s.mute ? 'Muted' : 'On'}</button></div>
@@ -302,7 +304,7 @@ export function initUI({ initAudio }) {
     const apply = () => { saveSoon(); emit('settings', { ...s }); };
     $('#v1', p).oninput = e => { s.volume = +e.target.value; apply(); }; $('#v2', p).oninput = e => { s.music = +e.target.value; apply(); };
     $('#v1', p).onchange = () => sfx.collect();
-    p.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { s.quality = b.dataset.q; sfx.click(); apply(); rerender('settings'); });
+    p.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { setTier(b.dataset.q); sfx.click(); apply(); rerender('settings'); });
     p.querySelectorAll('[data-tc]').forEach(b => b.onclick = () => { s.touch = b.dataset.tc; sfx.click(); apply(); rerender('settings'); });
     p.querySelectorAll('[data-ts]').forEach(b => b.onclick = () => { s.textSize = +b.dataset.ts; apply(); rerender('settings'); });
     p.querySelectorAll('[data-ik]').forEach(b => b.onclick = () => { s.interactKey = b.dataset.ik; apply(); rerender('settings'); });
@@ -312,12 +314,10 @@ export function initUI({ initAudio }) {
     return p;
   }
   const applyMotion = () => document.body.classList.toggle('reduce', !!state.settings.reduceMotion);
-  const applyQuality = () => {
-    const r = window.__game?.renderer; if (!r) return; const q = state.settings.quality;
-    r.setPixelRatio(q === 'low' ? 0.75 : q === 'medium' ? Math.min(devicePixelRatio, 1.25) : Math.min(devicePixelRatio, 2));
-    r.shadowMap.enabled = q !== 'low'; r.setSize(innerWidth, innerHeight);
-  };
-  on('settings', applyQuality); applyMotion(); setTimeout(applyQuality, 0);
+  // quality (pixel ratio, shadows, post, particles ...) is applied by src/quality.js subscribers; here we only keep the open panel in sync
+  on('quality', () => { if (openPanel === 'settings') rerender('settings'); });
+  on('ui:request', e => { if (e && e.panel && panels[e.panel] && started) open(e.panel); });
+  applyMotion();
 
   // ---- HUD values ----
   const petalsEl = $('#petals'); let shown = state.petals;

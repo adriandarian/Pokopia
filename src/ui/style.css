@@ -425,3 +425,14 @@ body.ts-big #objective{left:14px}
 }
 .card.dc{display:flex;flex-direction:column;align-items:center}
 .card.dc .acts{margin-top:auto;padding-top:8px;width:100%}
+
+/* adaptive-quality notice (src/quality.js) */
+.qtoast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;max-width:min(94vw,520px);background:rgba(255,255,255,.96);border:3px solid #fff;border-radius:22px;padding:10px 12px 10px 14px;
+  box-shadow:0 6px 0 rgba(120,70,140,.22),0 14px 28px rgba(60,30,90,.22);color:var(--ink);animation:toastIn .5s var(--pop);pointer-events:auto;z-index:30}
+.qtoast.out{animation:toastOut .35s ease-in forwards}
+.qtoast .qt-ico{font-size:24px;flex:none}
+.qtoast .qt-tx{display:flex;flex-direction:column;font-weight:800;font-size:15px;line-height:1.2}
+.qtoast .qt-tx small{font-weight:700;font-size:12.5px;color:var(--ink2);margin-top:2px}
+.qtoast .qt-set{flex:none;border:0;border-radius:999px;padding:8px 14px;font-weight:800;font-size:14px;color:#fff;background:var(--grape);min-height:40px}
+.qtoast .qt-x{flex:none;border:0;background:transparent;font-size:26px;line-height:1;color:var(--ink2);width:40px;height:40px;border-radius:50%}
+@media (max-width:640px){.qtoast{bottom:96px}}

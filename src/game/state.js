@@ -11,7 +11,7 @@ const defaults = () => ({
   decorInv: {}, decor: [], charmMs: {}, eventSeen: 0, mem: {}, hang: null, hints: {}, featuredDay: 0, senseAt: 0, lastWelcome: 0, placedTypes: {},
   owned: [...DEFAULT_OWNED], equipped: { ...DEFAULT_EQUIP },
   quests: null, questSet: 0, tutorial: 0,
-  settings: { volume: 0.8, music: 0.5, quality: 'high', reduceMotion: false, touch: 'auto', textSize: 1, mute: false, interactKey: 'KeyE' },
+  settings: { volume: 0.8, music: 0.5, quality: 'auto', reduceMotion: false, touch: 'auto', textSize: 1, mute: false, interactKey: 'KeyE' },
 });
 
 export const state = defaults();

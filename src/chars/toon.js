@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { dappleKey, outlineVisible } from '../quality.js';
 
 // Soft 4-step gradient so shading is toon-like but gentle (Animal Crossing feel).
 let _grad;
@@ -49,7 +50,7 @@ float vn(vec3 x){ vec3 i = floor(x), f = fract(x); f = f*f*(3.0-2.0*f);
          if (satAmt > 0.0) { float lum = dot(outgoingLight, vec3(0.299, 0.587, 0.114)); outgoingLight = mix(vec3(lum), outgoingLight, 1.0 + satAmt); outgoingLight += diffuseColor.rgb * vec3(0.07, 0.02, 0.0) * satAmt; }
          #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'toonrim4' + (vc ? 'v' : '') + (rimTint ? 't' : '') + sat + 'c' + cool;
+  m.customProgramCacheKey = () => 'toonrim4' + (vc ? 'v' : '') + (rimTint ? 't' : '') + sat + 'c' + cool + dappleKey();
   return m;
 }
 
@@ -69,7 +70,7 @@ function outlineMat(thick, color) {
 export function outline(mesh, thick = 0.035, color = '#3b2a3a') {
   const o = new THREE.Mesh(mesh.geometry, outlineMat(Math.round(thick * 2000) / 2000, color));
   o.userData.isOutline = true; o.userData.thick = thick; o.userData.color = color;
-  mesh.add(o); return o;
+  o.visible = outlineVisible(o); mesh.add(o); return o;
 }
 
 // Convenience: toon mesh (+outline) added to parent.

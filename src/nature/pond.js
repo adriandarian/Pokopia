@@ -4,6 +4,7 @@ import { POND_LEVEL, heightAt } from '../terrain.js';
 import { mulberry } from '../noise.js';
 import { prep, merge, blob } from './geo.js';
 import { applyWind, tickWind } from './wind.js';
+import { onTierChange } from '../quality.js';
 
 export function buildPond(scene) {
   const R = POND.r * 1.9, N = 96;
@@ -23,14 +24,14 @@ export function buildPond(scene) {
     transparent: true, fog: true, depthWrite: false,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       time: { value: 0 }, c: { value: new THREE.Vector3(POND.x, POND.z, R) }, bed: { value: tex },
-      sunDir: { value: sun }, day: { value: 1 }, sky: { value: new THREE.Color('#bfe4f7') },
+      sunDir: { value: sun }, day: { value: 1 }, uQ: { value: 2 }, sky: { value: new THREE.Color('#bfe4f7') },
     }]),
     vertexShader: `varying vec3 w;
       #include <fog_pars_vertex>
       void main(){vec4 wp=modelMatrix*vec4(position,1.);w=wp.xyz;vec4 mvPosition=viewMatrix*wp;gl_Position=projectionMatrix*mvPosition;
       #include <fog_vertex>
       }`,
-    fragmentShader: `uniform float time; uniform vec3 c; uniform sampler2D bed; uniform vec3 sunDir; uniform float day; uniform vec3 sky; varying vec3 w;
+    fragmentShader: `uniform float time; uniform vec3 c; uniform sampler2D bed; uniform vec3 sunDir; uniform float day; uniform float uQ; uniform vec3 sky; varying vec3 w;
       #include <fog_pars_fragment>
       float h21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
       float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
@@ -46,7 +47,7 @@ export function buildPond(scene) {
         float nx = vn((p+vec2(e,0.))*1.6+vec2(t*.15,t*.1)) + .6*vn((p+vec2(e,0.))*3.7-vec2(t*.2,-t*.13));
         float nz = vn((p+vec2(0.,e))*1.6+vec2(t*.15,t*.1)) + .6*vn((p+vec2(0.,e))*3.7-vec2(t*.2,-t*.13));
         vec3 N = normalize(vec3((n0-nx)*1.4, 1., (n0-nz)*1.4));
-        for(int i=0;i<3;i++){
+        if(uQ>.5) for(int i=0;i<3;i++){
           vec2 dc = c.xy + vec2(sin(float(i)*2.3+1.)*3.2, cos(float(i)*1.7)*3.);
           float ph = fract(t*.18 + float(i)*.33);
           float rr = length(p-dc);
@@ -63,7 +64,7 @@ export function buildPond(scene) {
         vec3 H = normalize(sunDir + V);
         float spec = pow(max(dot(N,H),0.), 140.) * 1.4;
         col += spec*day*day;
-        col += smoothstep(.97,1.,vn(p*7.+t*.6)*vn(p*5.-t*.5)*1.9)*.12*day;
+        if(uQ>1.5) col += smoothstep(.97,1.,vn(p*7.+t*.6)*vn(p*5.-t*.5)*1.9)*.12*day;
         float edge = smoothstep(.0,.09,depth+.02);
         float foam = (1.-smoothstep(.0,.2,depth)) * smoothstep(-.03,.03,depth) * (.65+.35*sin(t*.8+vn(p*4.)*6.));
         col = mix(col, vec3(1.), foam*.5*mix(.25,1.,day));
@@ -74,6 +75,7 @@ export function buildPond(scene) {
         #include <fog_fragment>
       }`,
   });
+  onTierChange((p) => { mat.uniforms.uQ.value = p.water; });
   const m = new THREE.Mesh(g, mat);
   m.position.set(POND.x, POND_LEVEL, POND.z);
   m.renderOrder = 2;

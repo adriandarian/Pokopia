@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { windTime } from './wind.js';
+import { onTierChange } from '../quality.js';
 
 /** Falling blossom petals: one GPU-animated Points system around every blossom tree. */
 export function buildPetals(scene, trees, perTree = 16) {
   const n = trees.length * perTree; if (!n) return;
   const base = new Float32Array(n * 3), seed = new Float32Array(n * 2);
   let k = 0;
-  for (const [x, y, z, sc] of trees) for (let i = 0; i < perTree; i++, k++) {
+  for (let i = 0; i < perTree; i++) for (const [x, y, z, sc] of trees) {   // slot-major order: a draw range keeps every tree covered
     base[k * 3] = x; base[k * 3 + 1] = y; base[k * 3 + 2] = z;
-    seed[k * 2] = Math.random(); seed[k * 2 + 1] = sc;
+    seed[k * 2] = Math.random(); seed[k * 2 + 1] = sc; k++;
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(base, 3));
@@ -43,4 +44,6 @@ export function buildPetals(scene, trees, perTree = 16) {
   const pts = new THREE.Points(g, mat); pts.frustumCulled = false; pts.renderOrder = 3;
   mat.onBeforeRender = (r) => { mat.uniforms.uPx.value = r.domElement.height / 720; };
   scene.add(pts);
+  // quality: tree-major draw order, so thinning by whole trees' share keeps coverage even
+  onTierChange((p) => { pts.visible = p.fx.blossom > 0; g.setDrawRange(0, Math.floor(n * p.fx.blossom)); });
 }

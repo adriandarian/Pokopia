@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import { dappleKey } from '../quality.js';
 import { heightAt, WORLD } from '../terrain.js';
 import { fbm } from '../noise.js';
 import { meadowMask, groveMask } from './features.js';
 import { windTime } from './wind.js';
 import { world } from '../chars/fx.js';
+import { onTierChange } from '../quality.js';
 
 /** Rounded, tapered blades: 4 per tuft, 3 rows each (5 tris), dark base -> bright tip. */
 function tuftGeometry() {
@@ -34,20 +36,21 @@ function tuftGeometry() {
 }
 
 export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] }) {
-  const CELL = 16, MAXD = 28;
+  const CELL = 16; let MAXD = 28;   // MAXD (fade/cull distance) and tuft share come from the quality tier
   const uFade = { value: new THREE.Vector4(0, 0, 0, 1) }, uPlayer = { value: new THREE.Vector3(1e5, 0, 1e5) }, uClr = { value: Array.from({ length: 32 }, () => new THREE.Vector3(1e5, 0, 0)) }, uCre = { value: Array.from({ length: 16 }, () => new THREE.Vector3(1e5, 0, 1e5)) };
+  const uGrow = { value: 0 };
   const mat = new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide, emissive: '#1d4010', emissiveIntensity: 0.55 });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = windTime;
-    sh.uniforms.uFade = uFade; sh.uniforms.uPlayer = uPlayer; sh.uniforms.uCre = uCre; sh.uniforms.uClr = uClr;
+    sh.uniforms.uGrow = uGrow; sh.uniforms.uFade = uFade; sh.uniforms.uPlayer = uPlayer; sh.uniforms.uCre = uCre; sh.uniforms.uClr = uClr;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-        uniform float uTime; uniform vec4 uFade; uniform vec3 uPlayer; uniform vec3 uCre[16]; uniform vec3 uClr[32]; attribute float aw; varying float vT; varying float vF;`)
+        uniform float uTime; uniform float uGrow; uniform vec4 uFade; uniform vec3 uPlayer; uniform vec3 uCre[16]; uniform vec3 uClr[32]; attribute float aw; varying float vT; varying float vF;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vT = aw;
         vec3 iw = vec3(instanceMatrix[3]);
         float dist = distance(iw.xz, uFade.xz);
-        vF = smoothstep(${MAXD.toFixed(1)}, ${(MAXD * 0.6).toFixed(1)}, dist);
+        vF = smoothstep(uFade.w, uFade.w * 0.6, dist);
         float pf = smoothstep(0.9, 2.7, distance(iw.xz, uPlayer.xz)); // flatten grass around the hero so feet stay visible
         float dpl = distance(iw.xz, uPlayer.xz);
         float cf = 1.;
@@ -56,7 +59,7 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] })
         for (int ki = 0; ki < 32; ki++) kf = min(kf, smoothstep(uClr[ki].z, uClr[ki].z + 0.45, distance(iw.xz, uClr[ki].xy)));
         float sy = length(instanceMatrix[1].xyz);
         float capK = mix(0.5, 1.8, smoothstep(5., 16., dpl)); // keep grass about knee-high around the play area
-        transformed.y *= (0.25 + 0.75 * vF) * step(0.001, vF) * (0.12 + 0.88 * pf) * (0.12 + 0.88 * cf) * kf * min(1., capK / (0.5 * sy));
+        transformed.y *= smoothstep(0., 1., uGrow) * (0.25 + 0.75 * vF) * step(0.001, vF) * (0.12 + 0.88 * pf) * (0.12 + 0.88 * cf) * kf * min(1., capK / (0.5 * sy));
         float ph = iw.x * 0.27 + iw.z * 0.19;
         float gust = sin(uTime * 0.31 + iw.x * 0.045 + iw.z * 0.035) * 0.5 + 0.5;
         float k = aw * aw * (0.05 + gust * 0.11);
@@ -71,14 +74,17 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] })
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.2,.42,.1), (1.-vF)*.5);
         diffuseColor.rgb *= mix(.92, 1., smoothstep(0.,.3,vT));`);;
   };
-  mat.customProgramCacheKey = () => 'grassV2';
+  mat.customProgramCacheKey = () => 'grassV2' + dappleKey();
 
   const geo = tuftGeometry();
   const cells = new Map();
   const d = new THREE.Object3D(), col = new THREE.Color();
   const TARGET = 22500;
   let n = 0, tries = 0;
+  // tuft placement is time-sliced over the first rendered frames (it is ~0.5 s of boot); the grass then grows in behind the title screen
+  function* place() {
   while (n < TARGET && tries++ < TARGET * 8) {
+    if ((tries & 1023) === 0) yield;
     const x = (rnd() - 0.5) * WORLD * 0.94, z = (rnd() - 0.5) * WORLD * 0.94, h = heightAt(x, z);
     if (h < 1.5 || h > 12.6) continue;
     const pm = pathMask(x, z);
@@ -102,21 +108,30 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] })
     c.push([d.matrix.clone(), col.clone(), x, z]);
     n++;
   }
-  const meshes = [];
+  }
+  const meshes = []; let ready = false, readyAt = 0, prof = null;
+  const applyProf = () => { if (!prof) return; MAXD = prof.grass.dist; for (const m of meshes) m.count = Math.max(1, Math.ceil(m.userData.full * prof.grass.frac)); };
+  function finish() {
   for (const [, list] of cells) {
     const mesh = new THREE.InstancedMesh(geo, mat, list.length);
     let cx = 0, cz = 0;
     list.forEach((e, i) => { mesh.setMatrixAt(i, e[0]); mesh.setColorAt(i, e[1]); cx += e[2]; cz += e[3]; });
     mesh.userData.cx = cx / list.length; mesh.userData.cz = cz / list.length;
-    mesh.castShadow = false; mesh.receiveShadow = true;
+    mesh.castShadow = false; mesh.receiveShadow = true; mesh.userData.full = list.length;
     mesh.computeBoundingSphere();
     scene.add(mesh); meshes.push(mesh);
   }
+  ready = true; readyAt = performance.now(); applyProf();
+  }
+  const it = place();
+  onTierChange((p) => { prof = p; MAXD = p.grass.dist; applyProf(); });
   // distance culling + fade centre follow the camera
   const prev = scene.onBeforeRender;
   scene.onBeforeRender = function (r, s, camera, ...rest) {
     prev && prev.call(this, r, s, camera, ...rest);
-    const cp = camera.position; uFade.value.set(cp.x, 0, cp.z, 1); uPlayer.value.copy(world.playerPos);
+    if (!ready) { const t0 = performance.now(); while (performance.now() - t0 < 6) { if (it.next().done) { finish(); break; } } }
+    else if (uGrow.value < 1) uGrow.value = Math.min(1, (performance.now() - readyAt) / 1400);
+    const cp = camera.position; uFade.value.set(cp.x, 0, cp.z, MAXD); uPlayer.value.copy(world.playerPos);
     const cl = typeof window !== 'undefined' && window.__creatures && window.__creatures.list;
     const CL = world.clearings || (world.clearings = []);
     for (let i = 0; i < 32; i++) { const c = CL[i]; if (c) uClr.value[i].set(c.x, c.z, c.r); else uClr.value[i].set(1e5, 0, 0); }

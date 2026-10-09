@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { setCaster } from '../quality.js';
 import { heightAt } from '../terrain.js';
 import { pathMask, PATH_PTS } from './features.js';
 import { prep, merge, blob, cyl } from './geo.js';
@@ -92,7 +93,7 @@ export function buildProps(scene) {
     } }
 
   const m = new THREE.Mesh(merge(L), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, emissive: '#2a3a18', emissiveIntensity: 0.12 }));
-  m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+  setCaster(m, 3, true); m.receiveShadow = true; m.frustumCulled = false;
   scene.add(m);
   return taken;
 }

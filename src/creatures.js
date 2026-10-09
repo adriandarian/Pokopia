@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { dappleKey, setCaster, onTierChange } from './quality.js';
 import { heightAt, WORLD } from './terrain.js';
 import { mulberry } from './noise.js';
 import { SPECIES } from './chars/species.js';
@@ -11,7 +12,8 @@ import { softBlob } from './chars/hero.js';
 export { SPECIES };
 const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
 const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
-const NEAR = 22, FAR = 60;   // full detail inside NEAR, body-only to FAR, hidden / not simulated beyond
+let NEAR = 22, FAR = 60;   // full detail inside NEAR, body-only to FAR, hidden / not simulated beyond (set per quality tier)
+onTierChange((p) => { NEAR = p.creature.near; FAR = p.creature.far; });
 
 let blobMat, blobGeo;
 function makeCreature(sp) {
@@ -20,7 +22,7 @@ function makeCreature(sp) {
   const parts = sp.build(rig);
   bake(rig, { vc: true });     // merge static parts + outline hulls: ~3 draws for the body instead of ~30
   const prop = makeBerryProp(); rig.add(prop);
-  const meshes = []; rig.traverse(o => { if (o.isMesh && !o.userData.isOutline) { o.castShadow = true; meshes.push(o); } });
+  const meshes = []; rig.traverse(o => { if (o.isMesh && !o.userData.isOutline) { setCaster(o, 2, true); meshes.push(o); } });
   blobGeo = blobGeo || new THREE.PlaneGeometry(1.7, 1.7).rotateX(-Math.PI / 2);
   blobMat = blobMat || new THREE.MeshBasicMaterial({ color: '#10200a', map: softBlob(), transparent: true, opacity: 0.45, depthWrite: false });
   const blob = new THREE.Mesh(blobGeo, blobMat); blob.position.y = 0.05; blob.renderOrder = 1; m.add(blob);
@@ -56,7 +58,7 @@ export class Creatures {
   setLod(c, lv) {
     if (c.lodLevel === lv) return; c.lodLevel = lv;
     const full = lv === 2; for (const o of c.lod) o.visible = full;
-    c.m.visible = lv > 0; for (const o of c.meshes) o.castShadow = full;
+    c.m.visible = lv > 0; for (const o of c.meshes) setCaster(o, 2, full);
     c.blob.visible = lv > 0;
   }
   update(dt, t) {
@@ -240,7 +242,7 @@ export class Collectibles {
             float band = smoothstep(0.17, 0.0, abs(sd - sp));
             totalEmissiveRadiance += vec3(1.0, 0.98, 0.9) * (band * 1.5 + smoothstep(0.28, 0.34, vOP.y) * 0.22 + smoothstep(0.07, 0.0, abs(vOP.y - 0.16)) * 0.3 + smoothstep(0.08, 0.0, abs(vOP.y + 0.18)) * 0.12);`);
       };
-      m.customProgramCacheKey = () => 'gemsweep';
+      m.customProgramCacheKey = () => 'gemsweep' + dappleKey();
       return m;
     };
     const gemCols = [['#ff6fb0', '#ff2f8a'], ['#6fd0ff', '#2f9cff'], ['#ffe066', '#ffb300'], ['#8cf0b0', '#2fd37a']];
@@ -260,6 +262,7 @@ export class Collectibles {
     this.halo.frustumCulled = false; scene.add(this.halo);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._e = new THREE.Euler(); this._s = new THREE.Vector3();
     for (let i = 0; i < 60; i++) this.spawn(true);
+    onTierChange((p) => { this._range = p.pickupRange; });
   }
   spawn(initial = false) {
     let x, z, h; do { x = (Math.random() - 0.5) * WORLD * 0.8; z = (Math.random() - 0.5) * WORLD * 0.8; h = heightAt(x, z); } while (h < 1 || h > 10);
@@ -275,6 +278,10 @@ export class Collectibles {
     const cx = playerPos.x, cy = playerPos.y + 1.0, cz = playerPos.z;
     for (const ty of this.types) ty._n = 0;
     let collected = null;
+    // draw only pickups that can be seen: outside the camera frustum (+margin) or beyond the tier's range they are skipped (nothing visible changes)
+    const cam = window.__game?.camera, fr = this._fr || (this._fr = new THREE.Frustum()), pm = this._pm || (this._pm = new THREE.Matrix4()), sp = this._sp || (this._sp = new THREE.Sphere(new THREE.Vector3(), 2.2));
+    if (cam) fr.setFromProjectionMatrix(pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    const range2 = (this._range || 1e9) ** 2;
     for (let i = this.items.length - 1; i >= 0; i--) {
       const m = this.items[i], u = m.userData, ty = u.ty;
       const dx = cx - m.position.x, dy = cy - m.position.y, dz = cz - m.position.z, d = Math.hypot(dx, dy, dz);
@@ -297,7 +304,9 @@ export class Collectibles {
     // write instance matrices + halos
     let hi = 0; const mt = this._m, q = this._q, e = this._e, s = this._s;
     for (const m of this.items) {
-      const u = m.userData, ty = u.ty, n = ty._n++; if (n >= this.cap) continue;
+      const u = m.userData, ty = u.ty;
+      if (cam) { sp.center.copy(m.position); if (!fr.intersectsSphere(sp) || cam.position.distanceToSquared(m.position) > range2) continue; }
+      const n = ty._n++; if (n >= this.cap) continue;
       e.set(Math.sin(t * 1.5 + u.ph) * 0.15, t * 1.8 + u.ph, 0, 'YXZ'); q.setFromEuler(e); s.setScalar(m.scale.x);
       mt.compose(m.position, q, s); ty.inst.setMatrixAt(n, mt);
       const pulse = (ty.kind === 'gem' ? 0.5 : 0.35) + Math.sin(t * 4 + u.ph) * 0.15;

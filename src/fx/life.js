@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { heightAt } from '../terrain.js';
+import { onTierChange } from '../quality.js';
 
 function glowTexture() {
   const cv = document.createElement('canvas'); cv.width = cv.height = 64;
@@ -167,6 +168,17 @@ export function buildAmbientLife(scene, state) {
   }));
   sparks.frustumCulled = false; scene.add(sparks);
 
+  // quality budgets (live): how many of each particle kind are drawn / simulated
+  let birdsN = BN, petalN = PN, flyN = flies.length, raysN = RN, slow = false, fr = 0, acc = 0;
+  onTierChange((p) => {
+    const f = p.fx;
+    g.setDrawRange(0, Math.min(N, f.motes)); sg.setDrawRange(0, Math.min(SN, f.sparks)); bg.setDrawRange(0, Math.min(BN, f.birds)); birdsN = f.birds;
+    raysN = Math.min(RN, f.rays); rg.setDrawRange(0, raysN * 6);
+    petalN = Math.min(PN, f.petals); petals.count = petalN;
+    flyN = Math.min(flies.length, f.butterflies); flies.forEach((fl, i) => { if (i >= flyN) fl.grp.visible = false; });
+    slow = f.slow;
+  });
+
   return {
     petals, butterflies: flies,
     update(dt, t) {
@@ -179,11 +191,13 @@ export function buildAmbientLife(scene, state) {
       const dayK = 1 - night;
       rays.material.uniforms.time.value = t; rays.material.uniforms.col.value.copy(state.sun).lerp(new THREE.Color('#fff'), 0.3);
       rays.material.uniforms.k.value = 0.14 * dayK * THREE.MathUtils.smoothstep(state.e, 0.0, 0.25) * (1.0 - 0.5 * THREE.MathUtils.smoothstep(state.e, 0.5, 0.9));
-      rays.visible = rays.material.uniforms.k.value > 0.002;
-      birds.material.uniforms.time.value = t; birds.material.uniforms.k.value = dayK; birds.material.uniforms.scale.value = innerHeight * 0.9; birds.visible = dayK > 0.05;
+      rays.visible = raysN > 0 && rays.material.uniforms.k.value > 0.002;
+      birds.material.uniforms.time.value = t; birds.material.uniforms.k.value = dayK; birds.material.uniforms.scale.value = innerHeight * 0.9; birds.visible = birdsN > 0 && dayK > 0.05;
       sparks.material.uniforms.time.value = t; sparks.material.uniforms.k.value = 0.4 + 0.6 * dayK; sparks.material.uniforms.scale.value = innerHeight * 0.9;
       pm.color.setScalar(0.35 + 0.65 * (1 - night));
-      for (let i = 0; i < PN; i++) {
+      acc += dt; fr++; if (slow && (fr & 1)) return;   // low tier: CPU-driven particles update every 2nd frame
+      dt = acc; acc = 0;
+      for (let i = 0; i < petalN; i++) {
         const p = pst[i];
         p.y -= dt * (0.5 + p.sp * 0.5);
         p.x += Math.sin(t * p.sp + p.ph) * dt * 1.2 + dt * 0.6;
@@ -198,8 +212,9 @@ export function buildAmbientLife(scene, state) {
       }
       petals.instanceMatrix.needsUpdate = true;
       const day = 1 - night;
-      for (const f of flies) {
-        f.grp.visible = day > 0.15;
+      for (let fi = 0; fi < flies.length; fi++) {
+        const f = flies[fi];
+        f.grp.visible = day > 0.15 && fi < flyN;
         if (!f.grp.visible) continue;
         const a = t * f.sp + f.ph;
         const x = f.cx + Math.cos(a) * f.rad + Math.sin(a * 2.3) * 1.5, z = f.cz + Math.sin(a * 1.3) * f.rad;

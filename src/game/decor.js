@@ -1,5 +1,6 @@
 // Island decorating: cheap merged toon meshes, placement mode (snap grid, rotate, pick up/move), persistence.
 import * as THREE from 'three';
+import { setCaster } from '../quality.js';
 import { heightAt } from '../terrain.js';
 import { toon, outline, mergeColored } from '../chars/toon.js';
 import { state, saveSoon, addPetals } from './state.js';
@@ -192,7 +193,7 @@ function makeMesh(id, ghost = false, s = 1, v = 0) {
   const t = template(id), g = new THREE.Group(), kit = DECOR_BY_ID[id].kind === 'kit';
   const inner = new THREE.Group(); g.add(inner);
   const m = new THREE.Mesh(t.solid, ghost ? ghostMat() : toon(TINTS[v % TINTS.length], { vc: true, rimTint: true }));
-  m.castShadow = !ghost; if (ghost) m.renderOrder = 10; else outline(m, 0.02, '#3b2a3a'); inner.add(m);
+  setCaster(m, 2, !ghost); if (ghost) m.renderOrder = 10; else outline(m, 0.02, '#3b2a3a'); inner.add(m);
   if (t.glow) { const gm = new THREE.Mesh(t.glow, glowMat); if (ghost) { gm.material = ghostMat(); gm.renderOrder = 10; } inner.add(gm); }
   if (t.spin) { const sg = new THREE.Group(); sg.position.set(...t.spin.origin); const sm = new THREE.Mesh(t.spin.geo, ghost ? ghostMat() : toon(TINTS[v % TINTS.length], { vc: true, rimTint: true })); if (ghost) sm.renderOrder = 10; sg.add(sm); inner.add(sg); g.userData.spin = sg; }
   inner.scale.setScalar((kit ? 1 : (SCALE[id] || 1.4)) * (kit ? 1 : (SIZES[s] ?? 1)));
