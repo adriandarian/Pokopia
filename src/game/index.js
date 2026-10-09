@@ -18,6 +18,7 @@ import { initFriends, tickFriends, onGift, speciesOf, lvlOf, grandfather } from 
 import { initDecor, tickDecor, isPlacing, confirmPlacing, rotatePlacing, cancelPlacing, storeMoving, nearestDecor, moveDecor } from './decor.js';
 import { initDays, tickDays, todayEvent } from './days.js';
 import { getFX } from '../chars/fx.js';
+import { shared } from './shared.js';
 
 const NAMES = { red: 'red berries', purple: 'purple berries', pink: 'pink gems', blue: 'blue gems', yellow: 'yellow gems', green: 'green gems' };
 export const luckyGem = (day) => ['pink', 'blue', 'yellow', 'green'][day % 4];
@@ -89,13 +90,14 @@ export function initGame(api) {
     const now = performance.now(); combo = now - lastPick < 2000 ? combo + 1 : 1; lastPick = now;
     if (COMBO_BONUS[combo]) { extra += COMBO_BONUS[combo]; emit('toast', { icon: '🔥', text: `Collecting streak x${combo}! +${COMBO_BONUS[combo]} 🌸`, kind: 'win' }); }
     if (extra) gemPay(extra);
-    for (const it of [...revealed]) if (!api.collect.items.includes(it)) { revealed.delete(it); hidden.delete(it); addPetals(5); emit('toast', { icon: '💎', text: 'Hidden gem found! +5 🌸', kind: 'win' }); }
+    for (const it of [...revealed]) if (!api.collect.items.includes(it)) { revealed.delete(it); hidden.delete(it); const dd = state.daily; dd.hiddenFound = (dd.hiddenFound || 0) + 1; const bonus = dd.hiddenFound <= 4 ? 5 : 0; if (bonus) addPetals(bonus); emit('toast', { icon: '💎', text: bonus ? 'Hidden gem found! +5 🌸' : 'Hidden gem found! (bonus petals are resting today)', kind: 'win' }); }
     saveSoon(); emit('pickup', { kind: k, colorName }); emit('inventory');
   };
 
   // ---- gems: gentle regrow (slower while many are uncollected) + hidden gems on hilltops/shores found with Sparkle Sense ----
-  const hidden = new Set(), revealed = new Set(), spawnOrig = api.collect.spawn.bind(api.collect);
+  const hidden = new Set(), revealed = shared.revealed, spawnOrig = api.collect.spawn.bind(api.collect);
   function addHidden() {
+    if (hidden.size >= 6) return spawnOrig(false);
     for (let k = 0; k < 80; k++) {
       const x = (Math.random() - 0.5) * WORLD * 0.8, z = (Math.random() - 0.5) * WORLD * 0.8, h = heightAt(x, z);
       if (!(h > 7.5 || (h > 0.95 && h < 1.35))) continue;
@@ -170,7 +172,7 @@ export function initGame(api) {
       const col = Math.random() < 0.5 ? 'red' : 'purple'; state.inv[`berry:${col}`] = (state.inv[`berry:${col}`] || 0) + mult; emit('inventory'); save();
       emit('toast', { icon: '🎁', text: `Daily gift: ${10 * mult} petals and ${mult} ${COLOR_ICON[col]} berr${mult > 1 ? 'ies' : 'y'}!`, kind: 'good' });
     }
-    setTimeout(() => emit('toast', { icon: f.icon, text: `Featured friend: ${f.id}. Lucky gem today: ${COLOR_ICON[lucky]} (+1 petal)`, kind: 'info' }), 3000);
+    if (state.featuredDay !== state.day) { state.featuredDay = state.day; saveSoon(); setTimeout(() => emit('toast', { icon: f.icon, text: `Featured friend: ${f.id}. Lucky gem today: ${COLOR_ICON[lucky]} (+1 petal)`, kind: 'info' }), 3000); }
   }
   const sky = () => window.__game?.scene?.userData?.sky;
   window.__gameTick = (dt) => {

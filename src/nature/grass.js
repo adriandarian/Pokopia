@@ -12,7 +12,7 @@ function tuftGeometry() {
   for (let b = 0; b < blades; b++) {
     const a = (b / blades) * Math.PI * 2 + b * 0.9, r = 0.03 + (b % 2) * 0.07;
     const ox = Math.cos(a) * r, oz = Math.sin(a) * r;
-    const h = 0.28 + ((b * 37) % 3) * 0.04, w = 0.068;
+    const h = 0.31 + ((b * 37) % 3) * 0.04, w = 0.08;
     const dir = a + 0.8 + b * 0.5, dx = Math.cos(dir), dz = Math.sin(dir);
     const px = -dz, pz = dx; // blade width axis
     const lean = 0.22 * h;
@@ -35,14 +35,14 @@ function tuftGeometry() {
 
 export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] }) {
   const CELL = 16, MAXD = 28;
-  const uFade = { value: new THREE.Vector4(0, 0, 0, 1) }, uPlayer = { value: new THREE.Vector3(1e5, 0, 1e5) }, uCre = { value: Array.from({ length: 16 }, () => new THREE.Vector3(1e5, 0, 1e5)) };
+  const uFade = { value: new THREE.Vector4(0, 0, 0, 1) }, uPlayer = { value: new THREE.Vector3(1e5, 0, 1e5) }, uClr = { value: Array.from({ length: 32 }, () => new THREE.Vector3(1e5, 0, 0)) }, uCre = { value: Array.from({ length: 16 }, () => new THREE.Vector3(1e5, 0, 1e5)) };
   const mat = new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide, emissive: '#1d4010', emissiveIntensity: 0.55 });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = windTime;
-    sh.uniforms.uFade = uFade; sh.uniforms.uPlayer = uPlayer; sh.uniforms.uCre = uCre;
+    sh.uniforms.uFade = uFade; sh.uniforms.uPlayer = uPlayer; sh.uniforms.uCre = uCre; sh.uniforms.uClr = uClr;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-        uniform float uTime; uniform vec4 uFade; uniform vec3 uPlayer; uniform vec3 uCre[16]; attribute float aw; varying float vT; varying float vF;`)
+        uniform float uTime; uniform vec4 uFade; uniform vec3 uPlayer; uniform vec3 uCre[16]; uniform vec3 uClr[32]; attribute float aw; varying float vT; varying float vF;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vT = aw;
         vec3 iw = vec3(instanceMatrix[3]);
@@ -52,9 +52,11 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] })
         float dpl = distance(iw.xz, uPlayer.xz);
         float cf = 1.;
         for (int ci = 0; ci < 16; ci++) cf = min(cf, smoothstep(0.7, 1.7, distance(iw.xz, uCre[ci].xz)));
+        float kf = 1.;
+        for (int ki = 0; ki < 32; ki++) kf = min(kf, smoothstep(uClr[ki].z, uClr[ki].z + 0.45, distance(iw.xz, uClr[ki].xy)));
         float sy = length(instanceMatrix[1].xyz);
         float capK = mix(0.5, 1.8, smoothstep(5., 16., dpl)); // keep grass about knee-high around the play area
-        transformed.y *= (0.25 + 0.75 * vF) * step(0.001, vF) * (0.12 + 0.88 * pf) * (0.12 + 0.88 * cf) * min(1., capK / (0.5 * sy));
+        transformed.y *= (0.25 + 0.75 * vF) * step(0.001, vF) * (0.12 + 0.88 * pf) * (0.12 + 0.88 * cf) * kf * min(1., capK / (0.5 * sy));
         float ph = iw.x * 0.27 + iw.z * 0.19;
         float gust = sin(uTime * 0.31 + iw.x * 0.045 + iw.z * 0.035) * 0.5 + 0.5;
         float k = aw * aw * (0.05 + gust * 0.11);
@@ -63,18 +65,18 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] })
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n varying float vT; varying float vF;')
       .replace('#include <color_fragment>', `#include <color_fragment>
-        vec3 bladeC = mix(vec3(.22,.45,.14), vec3(.4,.68,.2), smoothstep(0.,.45,vT));
+        vec3 bladeC = mix(vec3(.3,.52,.2), vec3(.42,.7,.22), smoothstep(0.,.45,vT));
         bladeC = mix(bladeC, vec3(.55,.78,.3), smoothstep(.55,1.,vT)*.45);
         diffuseColor.rgb *= bladeC * bladeC * 1.0 * (1.15) ;
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.2,.42,.1), (1.-vF)*.5);
-        diffuseColor.rgb *= mix(.86, 1., smoothstep(0.,.3,vT));`);;
+        diffuseColor.rgb *= mix(.92, 1., smoothstep(0.,.3,vT));`);;
   };
   mat.customProgramCacheKey = () => 'grassV2';
 
   const geo = tuftGeometry();
   const cells = new Map();
   const d = new THREE.Object3D(), col = new THREE.Color();
-  const TARGET = 30000;
+  const TARGET = 22500;
   let n = 0, tries = 0;
   while (n < TARGET && tries++ < TARGET * 8) {
     const x = (rnd() - 0.5) * WORLD * 0.94, z = (rnd() - 0.5) * WORLD * 0.94, h = heightAt(x, z);
@@ -116,6 +118,8 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] })
     prev && prev.call(this, r, s, camera, ...rest);
     const cp = camera.position; uFade.value.set(cp.x, 0, cp.z, 1); uPlayer.value.copy(world.playerPos);
     const cl = typeof window !== 'undefined' && window.__creatures && window.__creatures.list;
+    const CL = world.clearings || (world.clearings = []);
+    for (let i = 0; i < 32; i++) { const c = CL[i]; if (c) uClr.value[i].set(c.x, c.z, c.r); else uClr.value[i].set(1e5, 0, 0); }
     for (let i = 0; i < 16; i++) { const c = cl && cl[i]; if (c && c.m) uCre.value[i].copy(c.m.position); else uCre.value[i].set(1e5, 0, 1e5); }
     for (const m of meshes) {
       const bs = m.boundingSphere, dd = Math.hypot(m.userData.cx - cp.x, m.userData.cz - cp.z);

@@ -3,7 +3,7 @@ import './style.css';
 import { state, save, saveSoon, addPetals, resetSave } from '../game/state.js';
 import { SPECIES, WARDROBE, SLOTS, COLOR_ICON, BOND_AT, featuredSpecies } from '../game/data.js';
 import { isTouchDevice } from '../game/touch.js';
-import { EMOTES, playEmote } from '../game/emotes.js';
+import { EMOTES, playEmote, senseLeft } from '../game/emotes.js';
 import { LEVEL_NAME, LEVEL_AT, DECOR, DECOR_CATS, DECOR_BY_ID, eventFor, MAX_LEVEL, CHARM_MS } from '../game/content.js';
 import { startPlacing, moveDecor, storeIndex, sizePlacing, tintPlacing, linePlacing, rotatePlacing, cancelPlacing, confirmPlacing, storeMoving, buyDecor, charm, nextCharm } from '../game/decor.js';
 import { makePreview } from '../game/cosmetics.js';
@@ -30,11 +30,24 @@ export function setPrompt(text, sub, action = true, chips = null) {
     cb.querySelectorAll('.chip').forEach(b => b.onclick = e => { e.stopPropagation(); emit('ui:giftkey', { key: b.dataset.k }); });
   }
 }
+const sv = (inner, bg = '#fff4e2') => `<svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="16" fill="${bg}"/>${inner}</svg>`;
+const DECOR_SVG = {
+  b_floor: sv('<path d="M8 38 L32 26 L56 38 L32 50 Z" fill="#d9a066" stroke="#8a5a3a" stroke-width="2"/><path d="M8 38 V44 L32 56 V50 Z" fill="#b9824f"/><path d="M56 38 V44 L32 56 V50 Z" fill="#a06f40"/><path d="M20 32 L44 44 M32 26 L56 38 M8 38 L32 50" stroke="#8a5a3a" stroke-width="1" opacity=".5"/>', '#f1e4d0'),
+  b_wall: sv('<rect x="10" y="12" width="44" height="40" rx="3" fill="#fff0dc" stroke="#9c8a74" stroke-width="2"/><rect x="24" y="22" width="16" height="14" rx="2" fill="#9fd8ff" stroke="#fff" stroke-width="3"/><rect x="10" y="46" width="44" height="6" fill="#c9bdb0"/>', '#e9f4ff'),
+  b_door: sv('<rect x="10" y="12" width="44" height="40" rx="3" fill="#fff0dc" stroke="#9c8a74" stroke-width="2"/><rect x="23" y="24" width="18" height="28" rx="9" fill="#9a6b45"/><circle cx="37" cy="40" r="2" fill="#ffd23f"/>', '#e9f4ff'),
+  b_roof: sv('<path d="M6 42 L32 14 L58 42 Z" fill="#ee7a8d" stroke="#c9566e" stroke-width="2"/><path d="M14 42 L32 22 L50 42" fill="none" stroke="#fff" stroke-width="2" opacity=".6"/><rect x="6" y="42" width="52" height="5" fill="#c9566e"/>', '#fde8ee'),
+  d_bridge: sv('<path d="M6 44 Q32 14 58 44" fill="none" stroke="#9a6b45" stroke-width="8" stroke-linecap="round"/><path d="M12 36 V26 M22 28 V20 M32 25 V17 M42 28 V20 M52 36 V26" stroke="#fff4e2" stroke-width="3" stroke-linecap="round"/><path d="M12 28 Q32 6 52 28" fill="none" stroke="#fff4e2" stroke-width="3"/>', '#dff3ff'),
+  d_windmill: sv('<path d="M24 56 L28 28 H36 L40 56 Z" fill="#fff0dc" stroke="#9c8a74" stroke-width="2"/><path d="M26 28 L32 18 L38 28 Z" fill="#ee7a8d"/><g stroke="#fff" stroke-width="5" stroke-linecap="round"><path d="M32 26 L14 14"/><path d="M32 26 L50 14"/><path d="M32 26 L14 38"/><path d="M32 26 L50 38"/></g><circle cx="32" cy="26" r="3" fill="#9a6b45"/>', '#e4f4ff'),
+  d_gazebo: sv('<path d="M8 28 L32 10 L56 28 Z" fill="#ee7a8d" stroke="#c9566e" stroke-width="2"/><path d="M14 30 V52 M26 30 V52 M38 30 V52 M50 30 V52" stroke="#fff4e2" stroke-width="4"/><rect x="8" y="50" width="48" height="6" rx="3" fill="#e9d3b0"/>', '#f1ffe9'),
+  d_stones: sv('<ellipse cx="20" cy="42" rx="11" ry="7" fill="#cdbfae" stroke="#9c8a74" stroke-width="2"/><ellipse cx="40" cy="30" rx="10" ry="6" fill="#d9ccb9" stroke="#9c8a74" stroke-width="2"/><ellipse cx="42" cy="50" rx="9" ry="5" fill="#c4b6a3" stroke="#9c8a74" stroke-width="2"/>', '#e8f5e0'),
+  d_well: sv('<rect x="16" y="32" width="32" height="20" rx="4" fill="#c9bdb0" stroke="#9c8a74" stroke-width="2"/><rect x="18" y="34" width="28" height="5" fill="#4fb4e8"/><path d="M14 30 L32 12 L50 30 Z" fill="#e5788f"/><path d="M20 30 V50 M44 30 V50" stroke="#9a6b45" stroke-width="3"/>', '#e4f4ff'),
+};
+const decIcon = (d) => DECOR_SVG[d.id] || (d.species ? `<span class="big">${(SPECIES.find(x => x.id === d.species) || {}).icon || '🧸'}</span>` : `<span class="big">${d.icon}</span>`);
 const T_ = () => isTouchDevice();
 const giveWord = () => (T_() ? 'tap the Give button' : 'press E');
 const controlsText = () => isTouchDevice()
   ? [['🕹️', 'Left stick', 'Move'], ['⤒', 'JUMP button', 'Jump'], ['💨', 'RUN (hold)', 'Run'], ['👆', 'Drag the view', 'Look around'], ['🎁', 'Give button', 'Gift near a creature'], ['😊', 'Emote button', 'Wave, dance...']]
-  : [['⌨️', 'WASD / arrows', 'Move'], ['␣', 'Space', 'Jump'], ['⇧', 'Shift', 'Run'], ['🖱️', 'Drag mouse', 'Look around'], ['E', 'E (or F / Enter)', 'Give a gift, place or move decor'], ['R', 'R key', 'Rotate decor while placing'], ['1-4', 'Number keys', 'Emotes'], ['J Q H', 'J / Q / H', 'Journal, quests, help']];
+  : [['⌨️', 'WASD / arrows', 'Move'], ['␣', 'Space', 'Jump'], ['⇧', 'Shift', 'Run'], ['🖱️', 'Drag mouse', 'Look around'], ['E', 'E (or F / Enter)', 'Give a gift, place or move decor'], ['R', 'R key', 'Rotate decor while placing'], ['1-5', 'Number keys', 'Emotes'], ['J Q H', 'J / Q / H', 'Journal, quests, help']];
 const controlsHtml = () => `<div class="ctrls">${controlsText().map(([i, k, d]) => `<div class="ctrl"><b>${i}</b><span><strong>${k}</strong><small>${d}</small></span></div>`).join('')}</div>`;
 
 export function initUI({ initAudio }) {
@@ -52,7 +65,7 @@ export function initUI({ initAudio }) {
           <button class="round mint" id="b-journal" aria-label="Creature journal" title="Journal (J)">📖</button>
           <button class="round sun" id="b-shop" aria-label="Wardrobe" title="Wardrobe">👒</button>
           <button class="round teal" id="b-decor" aria-label="Island decorating" title="Island">🏡</button>
-          <button class="round" id="b-emote" aria-label="Emotes" title="Emotes (1-4)">😊</button>
+          <button class="round" id="b-emote" aria-label="Emotes" title="Emotes (1-5)">😊</button>
         </div>
         <div class="row2">
           <button class="round sm" id="b-mute" aria-label="Mute" title="Sound on/off">🔊</button>
@@ -74,7 +87,7 @@ export function initUI({ initAudio }) {
     </div>
   </div>`);
   document.body.appendChild(root);
-  const setHelp = () => { $('#help').textContent = isTouchDevice() ? 'Stick: move · Buttons: jump and run · Drag: look · Tap Give near creatures' : 'WASD/arrows move · Shift run · Space jump · Drag look · E gift · 1-4 emotes · H help'; };
+  const setHelp = () => { $('#help').textContent = isTouchDevice() ? 'Stick: move · Buttons: jump and run · Drag: look · Tap Give near creatures' : 'WASD/arrows move · Shift run · Space jump · Drag look · E gift · 1-5 emotes · H help'; };
   setHelp(); on('settings', setHelp);
 
   // logo + sparkles
@@ -92,13 +105,27 @@ export function initUI({ initAudio }) {
     setTimeout(() => { $('#help').style.opacity = 0; }, 14000);
   };
   $('#prompt button').onclick = () => emit('ui:interact');
+  $('#prompt .chips').addEventListener('keydown', e => {
+    const chips = [...e.currentTarget.querySelectorAll('.chip')], i = chips.indexOf(document.activeElement);
+    if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') { e.stopPropagation(); e.preventDefault(); chips[(i + (e.code === 'ArrowRight' ? 1 : chips.length - 1)) % chips.length]?.focus(); }
+    else if (e.code === 'Space' || e.code === 'Enter') { e.stopPropagation(); }
+    else if (e.code === 'Escape') { document.activeElement.blur(); }
+  });
+  addEventListener('keydown', e => {
+    if (e.code !== 'Tab' || !started || document.getElementById('overlay')) return;
+    const chips = $('#prompt .chips')?.querySelectorAll('.chip'); if (!chips || !chips.length || $('#prompt').classList.contains('hidden')) return;
+    e.preventDefault(); const sel = [...chips].find(c => c.classList.contains('sel')) || chips[0]; sel.focus();
+  });
   $('#b-emote').onclick = () => $('#emotewheel').classList.toggle('hidden');
+  const senseBtn = $('#emotewheel [data-e=sense]');
+  setInterval(() => { if (!senseBtn) return; const l = senseLeft(); senseBtn.classList.toggle('cool', l > 0); senseBtn.dataset.cd = l > 0 ? Math.ceil(l / 1000) + 's' : ''; }, 500);
   $('#emotewheel').querySelectorAll('[data-e]').forEach(b => b.onclick = () => { playEmote(b.dataset.e); $('#emotewheel').classList.add('hidden'); });
   $('#b-help').onclick = () => toggle('help'); $('#b-decor').onclick = () => toggle('decor');
   const muteIcon = () => { $('#b-mute').textContent = state.settings.mute ? '🔇' : '🔊'; };
   $('#b-mute').onclick = () => { state.settings.mute = !state.settings.mute; applySettings(); saveSoon(); muteIcon(); };
   muteIcon();
   $('#pl-ok').onclick = () => confirmPlacing(); $('#pl-rot').onclick = () => rotatePlacing(); $('#pl-x').onclick = () => cancelPlacing(); $('#pl-store').onclick = () => storeMoving(); $('#pl-size').onclick = () => sizePlacing(); $('#pl-tint').onclick = () => tintPlacing(); $('#pl-line').onclick = () => linePlacing();
+  on('placereason', e => { const ph = $('#placebar .ph'); if (!ph) return; ph.classList.toggle('bad', !!e.text); if (e.text) ph.textContent = '🚫 ' + e.text; else ph.textContent = T_() ? 'Use the stick to aim the ghost' : 'Walk to aim · R rotate · E place · Esc cancel'; });
   on('placing', e => {
     $('#placebar').classList.toggle('hidden', !e.on); document.body.classList.toggle('placing', !!e.on); if (!e.on) return;
     $('#pl-store').classList.toggle('hidden', !e.moving); document.body.classList.add('placing');
@@ -131,7 +158,7 @@ export function initUI({ initAudio }) {
   const rerender = (name) => { if (openPanel !== name) return; const st = overlay.firstChild.querySelector('.body')?.scrollTop || 0; const p = panels[name](); overlay.firstChild.replaceWith(p); p.style.animation = 'none'; const b = $('.body', p); if (b) b.scrollTop = st; };
 
   function panel(title, grad, bodyHtml) {
-    const p = h(`<section class="panel" role="dialog" aria-label="${title}" style="--hc1:${grad[0]};--hc2:${grad[1]}"><header><h2>${title}</h2><button class="x" aria-label="Close">✕</button></header><div class="body">${bodyHtml}</div></section>`);
+    const p = h(`<section class="panel tall" role="dialog" aria-label="${title}" style="--hc1:${grad[0]};--hc2:${grad[1]}"><header><h2>${title}</h2><button class="x" aria-label="Close">✕</button></header><div class="body">${bodyHtml}</div></section>`);
     $('.x', p).onclick = () => close(); return p;
   }
 
@@ -229,7 +256,7 @@ export function initUI({ initAudio }) {
       const act = dtab === 'shop'
         ? `<button class="btn sun sm" data-buy="${d.id}">Buy 🌸 ${d.price}</button>${n ? `<button class="btn mint sm" data-place="${d.id}">Place (${n})</button>` : ''}`
         : (n ? `<button class="btn mint sm" data-place="${d.id}">Place (${n})</button>` : `<span class="meta">🔒 ${d.gift || 'Buy in the shop'}</span>`);
-      return `<div class="card dc"><span class="big">${d.icon}</span><span class="nm">${d.name}</span><span class="meta">+${d.charm} charm${placed ? ` · ${placed} placed` : ''}${d.line ? ' · line' : ''}</span><div class="acts">${act}</div></div>`;
+      return `<div class="card dc">${DECOR_SVG[d.id] ? `<span class="big svg">${DECOR_SVG[d.id]}</span>` : decIcon(d)}<span class="nm">${d.name}</span><span class="meta">+${d.charm} charm${placed ? ` · ${placed} placed` : ''}${d.line ? ' · line' : ''}</span><div class="acts">${act}</div></div>`;
     };
     let body = '';
     if (dtab === 'shop') body = `<div class="tabs sub2">${DECOR_CATS.map(x => `<button class="tab ${dcat === x.id ? 'on' : ''}" data-dc="${x.id}">${x.icon} ${x.id}</button>`).join('')}</div><div class="grid">${DECOR.filter(d => !d.gift && d.cat === dcat).map(mk).join('')}</div>${dcat === 'Build kit' ? '<p class="sub">Build kit: floors snap to a 2x2 grid. Put walls and doorways on the floor edges, then a roof on top.</p>' : ''}`;

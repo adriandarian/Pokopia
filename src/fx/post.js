@@ -25,7 +25,7 @@ const GradeShader = {
       col=mix(vec3(l),col,sat*(1.+.15*(1.-clamp(l*3.,0.,1.))));
       col=.18*pow(max(col,0.)/.18,vec3(contrast)); // S-curve: deeper darks, punchier brights
       col*=mix(vec3(.96,.985,1.05),vec3(1.05,1.01,.94),smoothstep(.04,.8,l)); // cool shadows, warm highlights
-      col+=lift*vec3(.45,.6,1.)*(1.-clamp(l*3.,0.,1.));
+      col+=lift*vec3(.5,.7,1.)*(1.-clamp(l*3.,0.,1.));
       vec2 d=vUv-.5; d.x*=1.15;
       float v=smoothstep(.28,.85,length(d));
       col*=1.-v*vignette;
@@ -57,7 +57,7 @@ export function setupPost(renderer, scene, camera) {
         renderer.toneMappingExposure = s.exp;
         bloom.strength = s.bloom;
         grade.uniforms.tint.value.copy(s.tint);
-        grade.uniforms.lift.value = 0.02 * (s.night || 0);
+        grade.uniforms.lift.value = 0.01 * (s.night || 0);
         grade.uniforms.sat.value = 1.05 - 0.1 * (s.dusk || 0);
         grade.uniforms.contrast.value = 1.12 - 0.07 * (s.night || 0);
       }

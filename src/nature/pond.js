@@ -23,14 +23,14 @@ export function buildPond(scene) {
     transparent: true, fog: true, depthWrite: false,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       time: { value: 0 }, c: { value: new THREE.Vector3(POND.x, POND.z, R) }, bed: { value: tex },
-      sunDir: { value: sun }, sky: { value: new THREE.Color('#bfe4f7') },
+      sunDir: { value: sun }, day: { value: 1 }, sky: { value: new THREE.Color('#bfe4f7') },
     }]),
     vertexShader: `varying vec3 w;
       #include <fog_pars_vertex>
       void main(){vec4 wp=modelMatrix*vec4(position,1.);w=wp.xyz;vec4 mvPosition=viewMatrix*wp;gl_Position=projectionMatrix*mvPosition;
       #include <fog_vertex>
       }`,
-    fragmentShader: `uniform float time; uniform vec3 c; uniform sampler2D bed; uniform vec3 sunDir; uniform vec3 sky; varying vec3 w;
+    fragmentShader: `uniform float time; uniform vec3 c; uniform sampler2D bed; uniform vec3 sunDir; uniform float day; uniform vec3 sky; varying vec3 w;
       #include <fog_pars_fragment>
       float h21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
       float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
@@ -59,14 +59,15 @@ export function buildPond(scene) {
         vec3 shallow = vec3(.34,.74,.62), deepC = vec3(.02,.2,.32);
         vec3 col = mix(shallow, deepC, smoothstep(.05,.75,depth));
         col = mix(col, vec3(.55,.7,.45)*.8, (1.-smoothstep(.0,.25,depth))*.45); // sunlit sandy/mossy shallows
-        col = mix(col, sky, clamp(fres*.8,0.,1.)*.55);
+        col = mix(col, mix(vec3(.05,.1,.16), sky, day), clamp(fres*.8,0.,1.)*.55*mix(.5,1.,day));
         vec3 H = normalize(sunDir + V);
         float spec = pow(max(dot(N,H),0.), 140.) * 1.4;
-        col += spec;
-        col += smoothstep(.97,1.,vn(p*7.+t*.6)*vn(p*5.-t*.5)*1.9)*.12;
+        col += spec*day*day;
+        col += smoothstep(.97,1.,vn(p*7.+t*.6)*vn(p*5.-t*.5)*1.9)*.12*day;
         float edge = smoothstep(.0,.09,depth+.02);
         float foam = (1.-smoothstep(.0,.2,depth)) * smoothstep(-.03,.03,depth) * (.65+.35*sin(t*.8+vn(p*4.)*6.));
-        col = mix(col, vec3(1.), foam*.5);
+        col = mix(col, vec3(1.), foam*.5*mix(.25,1.,day));
+        col *= mix(.3, 1., day); // dark teal at night; never blown out
         float rim = 1. - smoothstep(.93,.99, length(uv-.5)*2.);
         float a = mix(.62, .97, smoothstep(.0,.45,depth)) * rim * edge + fres*.1*rim;
         gl_FragColor = vec4(col, clamp(a,0.,1.));
@@ -79,6 +80,7 @@ export function buildPond(scene) {
   m.onBeforeRender = () => {
     mat.uniforms.time.value = performance.now() / 1000;
     if (!m.userData.light) m.userData.light = scene.children.find(o => o.isDirectionalLight) || null;
+    const sk = scene.userData.sky; mat.uniforms.day.value = sk ? Math.max(0, Math.min(1, 1 - (sk.night ?? 0))) * Math.max(0.35, Math.min(1, sk.exp ?? 1)) : 1;
     const L = m.userData.light; if (L) mat.uniforms.sunDir.value.copy(L.position).sub(L.target.position).normalize();
   };
   scene.add(m);

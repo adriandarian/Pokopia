@@ -6,7 +6,7 @@ import { state, saveSoon, addPetals } from './state.js';
 import { DECOR, DECOR_BY_ID, PLUSH_COLORS, CHARM_MS } from './content.js';
 import { WARDROBE } from './data.js';
 import { emit, on } from './events.js';
-import { getFX } from '../chars/fx.js';
+import { getFX, world } from '../chars/fx.js';
 
 // ---------- part helpers (all return mergeColored items) ----------
 const box = (w, h, d, x, y, z, color, ry = 0, rz = 0) => ({ geo: new THREE.BoxGeometry(w, h, d), color, pos: [x, y, z], rot: [0, ry, rz] });
@@ -40,9 +40,9 @@ Object.assign(B, {
   d_hedge: () => ({ solid: [sph(0.5, 0, 0.5, 0, '#4fbf5a', [1.2, 0.9, 1]), sph(0.36, -0.55, 0.38, 0.05, '#63cf6a'), sph(0.36, 0.55, 0.38, -0.05, '#58c862'), sph(0.07, 0.2, 0.8, 0.35, '#ff8fb3'), sph(0.07, -0.3, 0.7, 0.4, '#fff27a')] }),
   d_lamppost: () => ({ solid: [cyl(0.1, 0.16, 0.2, 0, 0.1, 0, '#4a4058'), cyl(0.06, 0.07, 2.2, 0, 1.2, 0, '#4a4058'), box(0.5, 0.06, 0.5, 0, 2.38, 0, '#4a4058'), cone(0.36, 0.25, 0, 2.55, 0, '#4a4058', 4)], glow: [sph(0.22, 0, 2.18, 0, '#fff0a0')] }),
   d_gazebo: () => ({ solid: [cyl(1.5, 1.5, 0.15, 0, 0.07, 0, '#e9d3b0', 12), ...[[1, 1], [-1, 1], [1, -1], [-1, -1]].map(([x, z]) => cyl(0.09, 0.09, 2.0, x, 1.1, z, '#fff4e2', 6)), cone(1.9, 1.0, 0, 2.6, 0, '#ee7a8d', 8), box(1.4, 0.07, 0.07, 0, 1.0, 1.0, '#fff4e2'), box(1.4, 0.07, 0.07, 0, 1.0, -1.0, '#fff4e2'), sph(0.12, 0, 3.15, 0, '#ffe066')] }),
-  b_floor: () => ({ solid: [box(2, 0.9, 2, 0, -0.3, 0, '#d9a066'), ...[-0.75, -0.25, 0.25, 0.75].map(z => box(2, 0.02, 0.06, 0, 0.16, z, '#c58a52'))] }),
-  b_wall: () => ({ solid: [box(2, 2.5, 0.28, 0, 0.95, 0, '#fff0dc'), box(2.06, 0.25, 0.34, 0, 0.1, 0, '#c9bdb0'), box(0.14, 2.5, 0.34, -0.96, 0.95, 0, '#e8d7bf'), box(0.14, 2.5, 0.34, 0.96, 0.95, 0, '#e8d7bf'), box(0.7, 0.7, 0.34, 0, 1.2, 0, '#9fd8ff'), box(0.82, 0.08, 0.38, 0, 1.58, 0, '#ffffff'), box(0.82, 0.08, 0.38, 0, 0.82, 0, '#ffffff')] }),
-  b_door: () => ({ solid: [box(0.55, 2.5, 0.28, -0.72, 0.95, 0, '#fff0dc'), box(0.55, 2.5, 0.28, 0.72, 0.95, 0, '#fff0dc'), box(2, 0.5, 0.28, 0, 1.95, 0, '#fff0dc'), box(0.95, 1.6, 0.1, 0, 0.8, 0, '#9a6b45'), sph(0.06, 0.3, 0.8, 0.08, '#ffd23f'), box(1.0, 0.1, 0.5, 0, 0.0, 0.3, '#c9bdb0')] }),
+  b_floor: () => ({ solid: [box(2, 2.4, 2, 0, -0.95, 0, '#c9a27a'), box(2.08, 0.16, 2.08, 0, 0.12, 0, '#d9a066'), ...[-0.75, -0.25, 0.25, 0.75].map(z => box(2.0, 0.02, 0.06, 0, 0.21, z, '#c58a52'))] }),
+  b_wall: () => ({ solid: [box(2, 3.3, 0.28, 0, 0.55, 0, '#fff0dc'), box(2.06, 0.25, 0.34, 0, 0.1, 0, '#c9bdb0'), box(0.14, 2.5, 0.34, -0.96, 0.95, 0, '#e8d7bf'), box(0.14, 2.5, 0.34, 0.96, 0.95, 0, '#e8d7bf'), box(0.7, 0.7, 0.34, 0, 1.2, 0, '#9fd8ff'), box(0.82, 0.08, 0.38, 0, 1.58, 0, '#ffffff'), box(0.82, 0.08, 0.38, 0, 0.82, 0, '#ffffff')] }),
+  b_door: () => ({ solid: [box(0.55, 3.3, 0.28, -0.72, 0.55, 0, '#fff0dc'), box(0.55, 3.3, 0.28, 0.72, 0.55, 0, '#fff0dc'), box(2, 0.5, 0.28, 0, 1.95, 0, '#fff0dc'), box(0.95, 1.6, 0.1, 0, 0.8, 0, '#9a6b45'), sph(0.06, 0.3, 0.8, 0.08, '#ffd23f'), box(1.0, 0.1, 0.5, 0, 0.0, 0.3, '#c9bdb0')] }),
   b_roof: () => ({ solid: [{ geo: new THREE.ConeGeometry(1.75, 1.25, 4), color: '#ee7a8d', pos: [0, 0.6, 0], rot: [0, Math.PI / 4, 0] }, box(2.5, 0.12, 2.5, 0, -0.04, 0, '#c9566e')] }),
 });
 function plush(sp) { const c = PLUSH_COLORS[sp]; return { solid: [sph(0.42, 0, 0.42, 0, c, [1, 0.9, 1]), sph(0.3, 0, 0.95, 0, c), sph(0.11, -0.2, 1.2, 0, c, [1, 1.5, 0.7]), sph(0.11, 0.2, 1.2, 0, c, [1, 1.5, 0.7]), sph(0.045, -0.1, 0.98, 0.27, '#2a1d2e'), sph(0.045, 0.1, 0.98, 0.27, '#2a1d2e'), sph(0.07, 0, 0.9, 0.29, '#ffd1dc', [1, 0.6, 0.5]), sph(0.1, 0, 0.5, -0.4, '#ffffff')] }; }
@@ -77,53 +77,83 @@ const LIMIT = 220;
 export const charm = () => state.decor.reduce((a, d) => a + (DECOR_BY_ID[d.id]?.charm || 0), 0);
 export const decorCount = () => state.decor.length;
 export const isPlacing = () => !!mode;
-const baseY = (x, z, kit) => (kit ? Math.max(heightAt(x, z), heightAt(x + 1, z), heightAt(x - 1, z), heightAt(x, z + 1), heightAt(x, z - 1)) : heightAt(x, z));
+// Nature culling: tell grass/flowers where decor sits (world.clearings is read by src/nature; first 32 entries drive the grass).
+const CLEAR_R = { b_floor: 1.7, d_house: 2.7, d_gazebo: 2.4, d_windmill: 2.3, d_well: 1.5, d_bridge: 2.0, d_table: 1.3, d_picnic: 1.4, d_fairy: 1.2, d_bench: 1.1, d_gallery: 0 };
+function syncClearings() {
+  const list = [];
+  for (const d of state.decor) { const r = CLEAR_R[d.id]; if (r) list.push({ x: d.x, z: d.z, r: r * (d.id === 'b_floor' ? 1 : (SIZES[d.s ?? 1] ?? 1)) }); }
+  list.sort((a, b) => b.r - a.r);
+  world.clearings = list; world.clearingsVersion = (world.clearingsVersion || 0) + 1;
+}
+const baseY = (x, z) => heightAt(x, z);
+const isKit = id => DECOR_BY_ID[id].kind === 'kit';
+function kitSamples(x, z) { let hi = -9, lo = 99; for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const h = heightAt(x + i * 1.2, z + j * 1.2); hi = Math.max(hi, h); lo = Math.min(lo, h); } return { hi, lo }; }
+// All pieces of one house share a level: adopt a neighbour's level, otherwise the highest ground under the piece (+ a small rise so grass cannot poke through).
+function kitLevel(x, z, skipIdx = -1) {
+  let best = null, bd = 1.9;
+  state.decor.forEach((d, i) => { if (i === skipIdx || !isKit(d.id) || d.y == null) return; const dd = Math.hypot(d.x - x, d.z - z); if (dd < bd) { bd = dd; best = d; } });
+  return best ? best.y : kitSamples(x, z).hi + 0.3;
+}
+const ev = v => 2 * Math.round(v / 2);
+function nearestFloor(x, z, r) { let best = null, bd = r; for (const d of state.decor) if (d.id === 'b_floor') { const dd = Math.hypot(d.x - x, d.z - z); if (dd < bd) { bd = dd; best = d; } } return best; }
 function snapPos(x, z, id, rot) {
   const def = DECOR_BY_ID[id];
   if (def.kind !== 'kit') return [Math.round(x * 2) / 2, Math.round(z * 2) / 2];
-  const ev = v => 2 * Math.round(v / 2), od = v => 2 * Math.round((v - 1) / 2) + 1;
-  if (def.layer === 1) return rot % 4 === 0 ? [ev(x), od(z)] : [od(x), ev(z)]; // walls and doors sit on floor edges
-  return [ev(x), ev(z)];
+  const f = nearestFloor(x, z, 7), ax = f ? f.x : 0, az = f ? f.z : 0;       // magnetic: snap relative to the nearest existing floor
+  const gx = v => ax + 2 * Math.round((v - ax) / 2), gz = v => az + 2 * Math.round((v - az) / 2);
+  const ox = v => ax + 1 + 2 * Math.round((v - ax - 1) / 2), oz = v => az + 1 + 2 * Math.round((v - az - 1) / 2);
+  if (def.layer === 1) return rot % 4 === 0 ? [gx(x), oz(z)] : [ox(x), gz(z)];  // walls and doorways sit on floor edges
+  if (def.layer === 2) { const fl = nearestFloor(x, z, 2.6); if (fl) return [fl.x, fl.z]; }  // roofs centre over a floor
+  return [gx(x), gz(z)];
 }
 function placeMesh(m, d) {
-  const def = DECOR_BY_ID[d.id], y = baseY(d.x, d.z, def.kind === 'kit') + (def.elev || 0);
-  m.position.set(d.x, def.kind === 'flat' || def.kind === 'kit' ? y : y - 0.02, d.z); m.rotation.y = d.r * Math.PI / 4;
+  const def = DECOR_BY_ID[d.id];
+  if (def.kind === 'kit') { if (d.y == null) d.y = kitLevel(d.x, d.z); m.position.set(d.x, d.y + (def.elev || 0), d.z); }
+  else { const y = heightAt(d.x, d.z); m.position.set(d.x, def.kind === 'flat' ? y : y - 0.02, d.z); }
+  m.rotation.y = d.r * Math.PI / 4;
 }
 function spawn(d) { const m = makeMesh(d.id, false, d.s ?? 1, d.v ?? 0); placeMesh(m, d); scene.add(m); placed.push({ d, m }); return m; }
-function validAt(x, z, id, rot) {
-  if (heightAt(x, z) < 0.8) return false;
+// returns { ok, reason, replace }
+function check(x, z, id, rot) {
   const def = DECOR_BY_ID[id];
-  if (state.decor.length >= LIMIT && mode?.moving == null) return false;
-  for (const p of state.decor) {
-    if (mode?.moving != null && state.decor[mode.moving] === p) continue;
+  if (heightAt(x, z) < 0.8) return { ok: false, reason: 'In the water or on the beach edge' };
+  if (state.decor.length >= LIMIT && mode?.moving == null) return { ok: false, reason: 'Your island is full (220 pieces)' };
+  if (def.kind === 'kit') { const { hi, lo } = kitSamples(x, z); if (hi - lo > 2.0) return { ok: false, reason: 'Too steep for a house here' }; }
+  let replace = null;
+  for (let i = 0; i < state.decor.length; i++) {
+    const p = state.decor[i]; if (mode?.moving != null && mode.moving === i) continue;
     const o = DECOR_BY_ID[p.id], dd = Math.hypot(p.x - x, p.z - z);
     if (def.kind === 'kit' || o.kind === 'kit') {
-      if (def.kind === 'kit' && o.kind === 'kit' && def.layer === o.layer && dd < 0.9 && (p.r % 4 === rot % 4)) return false;
-      if (def.kind !== o.kind && dd < 1.0 && def.kind !== 'flat' && o.kind !== 'flat') return false;
+      if (def.kind === 'kit' && o.kind === 'kit') {
+        if (def.layer === o.layer && dd < 0.9 && p.r % 4 === rot % 4) { if (def.layer === 1 && p.id !== id) { replace = i; continue; } return { ok: false, reason: `${o.name} is already here` }; }
+        continue;
+      }
+      if (def.kind !== 'flat' && o.kind !== 'flat' && dd < 1.6) return { ok: false, reason: `Overlaps your ${o.name}` };
       continue;
     }
-    if (dd < (def.kind === 'flat' || o.kind === 'flat' ? 0.55 : Math.max(0.9, (footprint(id) + footprint(p.id)) * 0.55))) return false;
+    if (dd < (def.kind === 'flat' || o.kind === 'flat' ? 0.55 : Math.max(0.9, (footprint(id) + footprint(p.id)) * 0.55))) return { ok: false, reason: `Overlaps your ${o.name}` };
   }
-  return true;
+  return { ok: true, replace };
 }
 export function initDecor(pl) {
   player = pl; scene = window.__game.scene; fx = getFX(scene);
   for (const d of state.decor) if (DECOR_BY_ID[d.id]) spawn(d);
   ring = new THREE.Mesh(new THREE.RingGeometry(0.75, 0.95, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#7dffb0', transparent: true, opacity: 0.95, depthWrite: false, depthTest: false })); ring.visible = false; ring.renderOrder = 11; scene.add(ring);
   beam = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 7, 8), new THREE.MeshBasicMaterial({ color: '#7dffb0', transparent: true, opacity: 0.55, depthWrite: false, depthTest: false })); beam.visible = false; beam.renderOrder = 11; scene.add(beam);
-  checkCharm();
+  syncClearings(); checkCharm();
 }
 export function tickDecor(dt, t) {
   for (const p of placed) if (p.m.userData.spin) p.m.userData.spin.rotation.z += dt * 0.8;
   if (!mode) return;
   const pos = player.mesh.position, ry = player.mesh.rotation.y, def = DECOR_BY_ID[mode.id];
   const [x, z] = snapPos(pos.x + Math.sin(ry) * 3.2, pos.z + Math.cos(ry) * 3.2, mode.id, mode.rot);
-  const y = baseY(x, z, def.kind === 'kit') + (def.elev || 0), ok = validAt(x, z, mode.id, mode.rot);
+  const chk = check(x, z, mode.id, mode.rot), ok = chk.ok, y = (def.kind === 'kit' ? kitLevel(x, z, mode.moving ?? -1) : heightAt(x, z)) + (def.elev || 0);
   ghost.position.set(x, Math.max(y, 0), z); ghost.rotation.y = mode.rot * Math.PI / 4; ghost.userData.spin?.rotateZ(dt);
-  const gy = Math.max(baseY(x, z, false), 0), col = ok ? '#7dffb0' : '#ff7a7a', fp = footprint(mode.id) * (def.kind === 'kit' ? 1 : (SIZES[mode.s] ?? 1));
+  const gy = Math.max(def.kind === 'kit' ? y - (def.elev || 0) : heightAt(x, z), 0), col = ok ? '#7dffb0' : '#ff7a7a', fp = footprint(mode.id) * (def.kind === 'kit' ? 1 : (SIZES[mode.s] ?? 1));
   ring.position.set(x, gy + 0.08, z); ring.material.color.set(col); ring.scale.setScalar(fp * (1 + Math.sin(t * 6) * 0.04));
   beam.position.set(x, gy + 3.5, z); beam.material.color.set(col);
-  mode.pos = { x, z }; mode.ok = ok;
+  mode.pos = { x, z, y: def.kind === 'kit' ? y - (def.elev || 0) : null }; mode.ok = ok; mode.replace = chk.replace;
+  const reason = ok ? '' : chk.reason; if (reason !== mode.reason) { mode.reason = reason; emit('placereason', { text: reason }); }
   // Line mode: walking lays a row of pieces
   if (mode.line && def.line && ok && mode.moving == null) { const k = `${x},${z},${mode.rot}`; if (mode.lastCell !== k && (state.decorInv[mode.id] || 0) > 0) { mode.lastCell = k; doPlace(true); if (!(state.decorInv[mode.id] > 0)) endMode(); } }
 }
@@ -150,21 +180,22 @@ export function cancelPlacing() {
 function doPlace(quiet) {
   const { x, z } = mode.pos, id = mode.id;
   if (mode.moving != null) {
-    const p = state.decor[mode.moving]; Object.assign(p, { x, z, r: mode.rot, s: mode.s, v: mode.v });
+    const p = state.decor[mode.moving]; Object.assign(p, { x, z, r: mode.rot, s: mode.s, v: mode.v }); if (isKit(id)) p.y = mode.pos.y;
     scene.remove(placed[mode.moving].m); const m = makeMesh(id, false, mode.s, mode.v); placeMesh(m, p); scene.add(m); placed[mode.moving].m = m;
   } else {
     if (!(state.decorInv[id] > 0)) return false;
-    state.decorInv[id]--; const d = { id, x, z, r: mode.rot, s: mode.s, v: mode.v }; state.decor.push(d); spawn(d);
+    if (mode.replace != null) storeIndex(mode.replace);
+    state.decorInv[id]--; const d = { id, x, z, r: mode.rot, s: mode.s, v: mode.v }; if (isKit(id)) d.y = kitLevel(x, z); state.decor.push(d); spawn(d);
     emit('place', { id }); emit('inventory');
     if (!state.placedTypes[id]) { state.placedTypes[id] = 1; addPetals(5); emit('toast', { icon: '✨', text: `First ${DECOR_BY_ID[id].name} placed! +5 🌸`, kind: 'win' }); }
   }
-  const y = baseY(x, z, false);
+  const y = baseY(x, z);
   fx.burst(new THREE.Vector3(x, y + 0.6, z), '#fff6a8', quiet ? 6 : 18); if (!quiet) fx.hearts(new THREE.Vector3(x, y + 1.4, z), 3);
-  emit('sfx', { name: 'place' }); saveSoon(); checkCharm(); return true;
+  emit('sfx', { name: 'place' }); saveSoon(); syncClearings(); checkCharm(); return true;
 }
 export function confirmPlacing() {
   if (!mode) return false;
-  if (!mode.ok) { emit('toast', { icon: '🚫', text: 'You cannot place that here. Find a clear spot on dry land.', kind: 'info' }); emit('sfx', { name: 'nope' }); return false; }
+  if (!mode.ok) { emit('toast', { icon: '🚫', text: mode.reason || 'You cannot place that here.', kind: 'info' }); emit('sfx', { name: 'nope' }); return false; }
   const ok = doPlace(false), left = state.decorInv[mode.id] > 0 && mode.moving == null;
   if (!left) endMode();
   return ok;
@@ -178,7 +209,7 @@ export function moveDecor(i) { if (i >= 0) startPlacing(state.decor[i].id, i); }
 export function storeIndex(i) {
   if (i < 0 || i >= state.decor.length) return;
   const d = state.decor[i]; fx.burst(placed[i].m.position.clone().setY(placed[i].m.position.y + 0.8), '#fff6a8', 12); scene.remove(placed[i].m); placed.splice(i, 1); state.decor.splice(i, 1);
-  state.decorInv[d.id] = (state.decorInv[d.id] || 0) + 1; emit('inventory'); saveSoon(); checkCharm();
+  state.decorInv[d.id] = (state.decorInv[d.id] || 0) + 1; emit('inventory'); saveSoon(); syncClearings(); checkCharm();
 }
 export function storeMoving() { if (!mode || mode.moving == null) return; const i = mode.moving; endMode(); storeIndex(i); }
 export function buyDecor(id) {

@@ -10,7 +10,7 @@ const C = (h) => new THREE.Color(h);
 // Palette keyframes keyed by sun elevation. Hexes are sRGB (converted to linear by THREE.Color) so night/dusk
 // values are deliberately bright: lit surfaces still multiply by low albedo.
 const KEYS = [
-  { e: -0.45, zen: C('#0a1238'), hor: C('#1d3470'), sun: C('#9ab4ff'), fog: C('#1d3470'), amb: 1.6, hemiSky: C('#7894ee'), hemiGnd: C('#34466e'), exp: 1.7, tint: C('#cfdcff'), fill: 0.7 },
+  { e: -0.45, zen: C('#0a1238'), hor: C('#1d3470'), sun: C('#a8c4ff'), fog: C('#1d3470'), amb: 1.2, hemiSky: C('#8db0e4'), hemiGnd: C('#44546a'), exp: 1.3, tint: C('#f0f3ff'), fill: 0.55 },
   { e: -0.15, zen: C('#2a3a8a'), hor: C('#d98a86'), sun: C('#ff8a60'), fog: C('#8a6a9c'), amb: 1.5, hemiSky: C('#b498e0'), hemiGnd: C('#5c4c6c'), exp: 1.45, tint: C('#ffd2e4'), fill: 0.55 },
   { e: -0.02, zen: C('#3a54b0'), hor: C('#ff8446'), sun: C('#ff9a60'), fog: C('#e8906c'), amb: 1.45, hemiSky: C('#ffc0a4'), hemiGnd: C('#8a6a66'), exp: 1.3, tint: C('#ffe2d0'), fill: 0.4 },
   { e: 0.12,  zen: C('#3f78d8'), hor: C('#ffc080'), sun: C('#ffc490'), fog: C('#f6c090'), amb: 1.3, hemiSky: C('#ffdcc0'), hemiGnd: C('#7c8660'), exp: 1.12, tint: C('#fff0e0'), fill: 0.3 },
@@ -321,7 +321,7 @@ export function buildSky(scene) {
 
   // ---------- update ----------
   const tmp = { zen: C('#fff'), hor: C('#fff'), sun: C('#fff'), fog: C('#fff'), hemiSky: C('#fff'), hemiGnd: C('#fff'), tint: C('#fff') };
-  const moonDir = new THREE.Vector3(), ld = new THREE.Vector3(), cl = new THREE.Color(), WHITE = new THREE.Color('#ffffff'), MOONLIT = new THREE.Color('#8ea6e8');
+  const moonDir = new THREE.Vector3(), ld = new THREE.Vector3(), cl = new THREE.Color(), WHITE = new THREE.Color('#ffffff'), MOONLIT = new THREE.Color('#8ea6e8'), PURP = new THREE.Color('#a39aff');
   const SM = THREE.MathUtils.smoothstep;
   function apply() {
     const a = sunAngle(state.hour);
@@ -342,17 +342,18 @@ export function buildSky(scene) {
     } else {
       moonDir.copy(state.dir).negate(); moonDir.y = Math.max(moonDir.y, 0.45); moonDir.normalize();
       placeSun(moonDir); sun.color.set('#9bb4ff');
-      sun.intensity = 1.5 * SM(e, -0.12, -0.24);
+      sun.intensity = 0.85 * SM(e, -0.12, -0.24);
     }
     // fill: opposite side of the sun, cool
     fill.position.set(-state.dir.x * 100, 40, -state.dir.z * 100);
-    fill.color.set('#a39aff').lerp(k.hemiSky, 0.2); fill.intensity = k.fill * 1.5;
+    const nf = SM(e, -0.2, 0.04); // 0 at night, 1 by day
+    fill.color.set('#9fbcf4').lerp(WHITE, 0.3 * (1 - nf)).lerp(PURP, 0.35 * nf).lerp(k.hemiSky, 0.2 * nf); fill.intensity = k.fill * (0.75 + 0.75 * nf);
     const night = 1 - SM(e, -0.2, 0.04);
     skyMat.uniforms.night.value = night;
     state.dusk = skyMat.uniforms.dusk.value = THREE.MathUtils.clamp(1 - Math.abs(e + 0.02) / 0.28, 0, 1);
     water.material.uniforms.light.value = 0.6 + 0.4 * SM(e, -0.15, 0.3);
     state.night = night;
-    state.bloom = 0.24 + 0.2 * state.dusk + 0.1 * night;
+    state.bloom = 0.24 + 0.2 * state.dusk - 0.06 * night;
     // clouds: sunlit side takes sun colour, shaded side is cool sky colour
     const day = 0.3 + 0.7 * SM(e, -0.25, 0.2);
     cl.copy(k.sun).lerp(WHITE, 0.5 * (1 - state.dusk * 0.45)).lerp(MOONLIT, night * 0.6).multiplyScalar(day * 1.05);

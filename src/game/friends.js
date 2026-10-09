@@ -170,3 +170,15 @@ export function tickFriends(dt, now) {
 export const activeWishText = () => { const f = api.creatures.list.find(c => c.friend && wishOf(speciesOf(c))); if (!f) return null; const w = wishOf(speciesOf(f)); return { sp: speciesOf(f), text: w.text, c: f }; };
 // Saves from before levels needed days/variety: treat existing friends as having met the Friend requirements.
 export function grandfather(sp) { const m = mem(sp); if (!m.days.length) m.days.push(todayStr()); if (!Object.keys(m.kinds).length) { m.kinds.visit = 1; m.kinds.gift = 1; } if (!m.lv) m.lv = Math.max(1, Math.min(lvlOf(sp), 1)); state.rel[sp] = Math.max(ptsOf(sp), LEVEL_AT[1]); }
+
+// QA hook: force a hang-out invitation from the nearest friend (or make the nearest creature a friend first).
+export function forceHangout() {
+  const list = api.creatures.list, pp = api.player.mesh.position;
+  const c = [...list].filter(x => x.friend).sort((a, b) => Math.hypot(a.m.position.x - pp.x, a.m.position.z - pp.z) - Math.hypot(b.m.position.x - pp.x, b.m.position.z - pp.z))[0] || list[0];
+  for (let k = 0; k < 200; k++) {
+    const a = Math.random() * 6.283, r = 8 + Math.random() * 8, x = pp.x + Math.cos(a) * r, z = pp.z + Math.sin(a) * r, h = heightAt(x, z);
+    if (h > 1.3) { state.hang = { sp: speciesOf(c), x, z, t: Date.now() }; bubbleSay(c, 'Come to my favourite spot? Follow the sparkles!', 5); emit('toast', { icon: '✨', text: `${speciesOf(c)} invites you to hang out. Follow the sparkles, no rush!`, kind: 'info' }); saveSoon(); return state.hang; }
+  }
+  return null;
+}
+if (typeof window !== 'undefined') window.__hangout = () => forceHangout();

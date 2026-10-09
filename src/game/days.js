@@ -13,7 +13,7 @@ export function initDays(a) {
 }
 function announce() {
   const e = todayEvent();
-  emit('toast', { icon: e.icon, text: `${e.name}: ${e.blurb}`, kind: 'good' });
+  if (state.eventToast !== state.day) { state.eventToast = state.day; emit('toast', { icon: e.icon, text: `${e.name}: ${e.blurb}`, kind: 'good' }); }
   if (e.id === 'petalrain' && !state.settings.reduceMotion) startRain();
   if (e.id === 'firefly') { const sky = window.__game?.scene?.userData?.sky; if (sky && state.eventSeen !== state.day) { sky.hour = 20.2; } }
   state.eventSeen = state.day;

@@ -13,13 +13,14 @@ import { buildPetals } from './petals.js';
 /** CPU frustum + distance culling for instanced foliage (fewer triangles in both main and shadow passes). */
 function setupLod(scene, meshes) {
   const fr = new THREE.Frustum(), pm = new THREE.Matrix4(), sph = new THREE.Sphere(), lastP = new THREE.Vector3(1e9, 0, 0), lastD = new THREE.Vector3();
-  const fwd = new THREE.Vector3(); let lastT = 0;
+  const fwd = new THREE.Vector3(); let lastT = 0, lastV = -1;
   const prev = scene.onBeforeRender;
   scene.onBeforeRender = function (r, s, camera, ...rest) {
     prev && prev.call(this, r, s, camera, ...rest);
     const now = performance.now(); camera.getWorldDirection(fwd);
-    if (camera.position.distanceTo(lastP) < 0.8 && fwd.dot(lastD) > 0.9995 && now - lastT < 1500) return;
-    lastP.copy(camera.position); lastD.copy(fwd); lastT = now;
+    const CL = world.clearings || (world.clearings = []), ver = (world.clearingsVersion || 0) * 1000 + CL.length;
+    if (ver === lastV && camera.position.distanceTo(lastP) < 0.8 && fwd.dot(lastD) > 0.9995 && now - lastT < 1500) return;
+    lastP.copy(camera.position); lastD.copy(fwd); lastT = now; lastV = ver;
     camera.updateMatrixWorld(); pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); fr.setFromProjectionMatrix(pm);
     const cp = camera.position;
     for (const m of meshes) {
@@ -30,6 +31,7 @@ function setupLod(scene, meshes) {
         const x = st.pos[i * 3], y = st.pos[i * 3 + 1], z = st.pos[i * 3 + 2], rr = rad * st.sc[i] + 14;
         const dx = x - cp.x, dz = z - cp.z; if (dx * dx + dz * dz > (maxD + rr) * (maxD + rr)) continue;
         sph.center.set(x, y + rad * st.sc[i] * 0.5, z); sph.radius = rr; if (!fr.intersectsSphere(sph)) continue;
+        if (rad <= 1.6 && CL.length) { let cut = false; for (const c of CL) { const ex = x - c.x, ez = z - c.z, rr2 = c.r + 0.3; if (ex * ex + ez * ez < rr2 * rr2) { cut = true; break; } } if (cut) continue; }
         for (let k = 0; k < 16; k++) ma[n * 16 + k] = st.mat[i * 16 + k];
         ca[n * 3] = st.col[i * 3]; ca[n * 3 + 1] = st.col[i * 3 + 1]; ca[n * 3 + 2] = st.col[i * 3 + 2]; n++;
       }

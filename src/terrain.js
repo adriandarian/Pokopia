@@ -116,7 +116,10 @@ export function buildTerrain(scene) {
           for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){ vec2 g=vec2(float(x),float(y)); vec2 o=vec2(h21(i+g), h21(i+g+37.));
             vec2 r=g+o*.8+.1-f; float d=dot(r,r); if(d<md){ md=d; mid=i+g; } }
           return vec3(sqrt(md), h21(mid+3.1), h21(mid+9.7)); }
+        float gRock = 0.; vec3 gBlk = vec3(0.);
         vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        normal = normalize(normal + gBlk*.38*gRock);`)
       .replace('#include <color_fragment>', `
         vec2 xz = vW.xz; float h = vW.y;
         float pT = texture2D(uPath, (xz + 64.) / 128.).r;
@@ -140,6 +143,15 @@ export function buildTerrain(scene) {
         g2 *= 1. + dfade*(v1.z-.5)*.1;
         g2 = mix(g2, g2*vec3(1.14,1.05,.7), v2.y*.4);
         g2 = mix(g2, g2*vec3(.84,.98,1.0), smoothstep(.55,.9,v2.z)*.3);
+        // crisp close-range layer (no extra triangles): grain, light/dark flecks and clover sprites within ~10 m
+        float dn = smoothstep(14., 3., length(vViewPosition));
+        vec2 cc = floor(xz*40.); float grn = h21(cc);
+        g2 *= 1. + dn*((grn-.5)*.2 + step(.94, grn)*.12 - step(grn,.05)*.15);
+        vec2 cl = xz*5.5, ci = floor(cl), cf = fract(cl) - .5; float ch = h21(ci+11.);
+        vec2 co = (vec2(h21(ci+3.), h21(ci+7.)) - .5)*.4;
+        float lobe = max(max(smoothstep(.17,.12,length(cf-co-vec2(.0,.1))), smoothstep(.17,.12,length(cf-co-vec2(.09,-.06)))), smoothstep(.17,.12,length(cf-co-vec2(-.09,-.06))));
+        g2 = mix(g2, g2*vec3(.82,1.12,.82) + .03, lobe*step(.78,ch)*dn*.9);
+        g2 = mix(g2, vec3(.95,.93,.8), smoothstep(.07,.04,length(cf-co))*step(.96,ch)*dn);   // tiny white clover bloom
         grass = g2;
         // sand with ripples
         vec3 sand = mix(vec3(.95,.84,.6), vec3(.99,.91,.7), n2);
@@ -163,7 +175,17 @@ export function buildTerrain(scene) {
         float lf = fract(layerH);
         rockC *= 1. - .22*smoothstep(.82,.98,lf);                     // crisp dark seam under each band
         rockC *= 1. + .08*(1.-smoothstep(.0,.12,lf));                 // bright upper edge of each band
-        rockC *= .95 + .09*vn(vec2((xz.x+xz.y)*2.2, h*5.));
+        // hard-edged block cracks aligned to the strata + per-block tint
+        float uu = (xz.x + xz.y*.7)*.85 + h21(vec2(layer, 3.7))*17.;
+        float bid = floor(uu), bf = fract(uu);
+        float crack = 1. - smoothstep(.0,.06, min(bf, 1.-bf));
+        float bh = h21(vec2(bid, layer*1.7+5.));
+        rockC *= .9 + .2*bh;
+        rockC = mix(rockC, rockC*vec3(1.05,.98,.88), step(.7,h21(vec2(bid+9., layer))) * .6);
+        rockC *= 1. - .34*crack*step(.2,lf)*step(lf,.96);
+        rockC *= .95 + .1*bf;                                           // each block lit a little toward one side
+        rockC *= .96 + .08*vn(vec2((xz.x+xz.y)*6., h*9.));
+        gRock = rockM; gBlk = vec3(bh-.5, h21(vec2(bid, layer))-.5, h21(vec2(layer, bid+2.))-.5);
         float far = smoothstep(40., 90., length(vViewPosition));       // tame aliasing at distance
         rockC = mix(rockC, vec3(.84,.62,.38), far*.6);
         col = mix(col, rockC, rockM);
@@ -195,6 +217,7 @@ export function buildTerrain(scene) {
         pathC = mix(pathC, vec3(.66,.62,.57), step(.93, vn(xz*9.))*.4);
         pathC *= 1. - .1*smoothstep(.5,.7,pv);
         col = mix(col, col*vec3(.7,.84,.58), rim*.6*(1.-rockM));
+        pathC *= 1. + dn*((h21(floor(xz*55.))-.5)*.22 + step(.93,h21(floor(xz*22.+4.)))*.1);
         col = mix(col, pathC*mix(.86,1.,smoothstep(.5,.62,pv)), pm*(1.-rockM));
         // baked AO: concave valley floors and ledge feet
         col *= 1. - .3*vAO*(1.-pm);
