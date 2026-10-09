@@ -7,6 +7,69 @@ import { DECOR, DECOR_BY_ID, PLUSH_COLORS, CHARM_MS } from './content.js';
 import { WARDROBE } from './data.js';
 import { emit, on } from './events.js';
 import { getFX, world } from '../chars/fx.js';
+import { registerPreload, firstMesh, hasModel } from '../assets/loader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+
+// ---------- Kenney CC0 models (see public/assets/CREDITS.md) ----------
+const PARTS = ['wall', 'wall-door', 'wall-window-small', 'wall-window-shutters', 'wall-doorway-square', 'roof-gable', 'roof-point', 'roof-high-point', 'chimney', 'planks', 'fence', 'hedge-large', 'lantern', 'windmill', 'stall-stool', 'pillar-wood', 'poles-horizontal', 'tree-high-round', 'rock-flat', 'fountain-round', 'road', 'bench', 'tableRound', 'rugSquare', 'signpost'];
+for (const n of PARTS) registerPreload('dc_' + n, `/assets/decor/${n}.glb`);
+const _g = new Map(), _c = new THREE.Color();
+const srgb = THREE.SRGBColorSpace;
+// recolour rules operate on sRGB HSL; return [h,s,l]
+const RULES = {
+  cream: (h, s, l) => (h > 0.55 && h < 0.75 && s < 0.5) ? [0.09, 0.5, Math.min(0.97, 0.7 + l * 0.3)] : warm(h, s, l),
+  roofPink: (h, s, l) => (h > 0.38 && h < 0.52) ? [0.975, 0.6, Math.min(0.74, l + 0.04)] : (h > 0.96 || h < 0.02) && s > 0.4 ? [0.975, 0.6, Math.min(0.72, l + 0.05)] : warm(h, s, l),
+  leaf: (h, s, l) => (h > 0.38 && h < 0.52) ? [0.29, 0.55, Math.min(0.62, l + 0.02)] : warm(h, s, l),
+  blossom: (h, s, l) => (h > 0.38 && h < 0.52) ? [0.95, 0.72, Math.min(0.8, l + 0.2)] : warm(h, s, l),
+  stoneWarm: (h, s, l) => (h > 0.6 && h < 0.75) ? [0.09, 0.2, Math.min(0.9, l + 0.08)] : (h > 0.5 && h <= 0.6) ? [0.55, 0.7, Math.min(0.7, l + 0.05)] : warm(h, s, l),
+  dark: (h, s, l) => (h > 0.55 && h < 0.75) ? [0.75, 0.2, l * 0.55] : warm(h, s, l),
+  warm: (h, s, l) => warm(h, s, l),
+};
+function warm(h, s, l) { if (h > 0.6 && h < 0.75 && s < 0.5) return [0.09, 0.35, Math.min(0.85, l * 0.95)]; return (h > 0.02 && h < 0.1 && s > 0.3) ? [0.085, Math.min(0.75, s * 1.15), Math.min(0.85, l + 0.04)] : [h, s, l]; }
+const _hsl = { h: 0, s: 0, l: 0 };
+function modelGeo(name) {
+  if (_g.has(name)) return _g.get(name);
+  const fm = firstMesh('dc_' + name); if (!fm) { _g.set(name, null); return null; }
+  const g = fm.geometry.index ? fm.geometry.toNonIndexed() : fm.geometry; g.deleteAttribute('uv');
+  g.computeBoundingBox(); _g.set(name, g); return g;
+}
+// item: { model, pos, ry, rx, rz, s: num|[x,y,z], rule, tint, paint, raw }  -> BufferGeometry with position/normal/color
+function modelItem(it) {
+  const src = modelGeo(it.model); if (!src) return null;
+  const g = src.clone(), bb = src.boundingBox, col = g.attributes.color;
+  if (!it.raw) g.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
+  const rule = typeof it.rule === 'function' ? it.rule : it.rule && RULES[it.rule], tint = it.tint && new THREE.Color(it.tint), paint = it.paint && new THREE.Color(it.paint);
+  if (rule || tint || paint) {
+    const a = col.array;
+    for (let i = 0; i < a.length; i += 3) {
+      _c.setRGB(a[i], a[i + 1], a[i + 2], THREE.LinearSRGBColorSpace);
+      if (rule) { _c.getHSL(_hsl, srgb); const [h, s, l] = rule(_hsl.h, _hsl.s, _hsl.l); _c.setHSL(h, s, l, srgb); }
+      if (paint) { _c.getHSL(_hsl, srgb); const l = _hsl.l; _c.copy(paint).multiplyScalar(0.55 + l * 0.65); }
+      if (tint) _c.multiply(tint);
+      a[i] = _c.r; a[i + 1] = _c.g; a[i + 2] = _c.b;
+    }
+  }
+  const sc = Array.isArray(it.s) ? it.s : [it.s ?? 1, it.s ?? 1, it.s ?? 1];
+  const m = new THREE.Matrix4().compose(new THREE.Vector3(...(it.pos || [0, 0, 0])), new THREE.Quaternion().setFromEuler(new THREE.Euler(it.rx || 0, it.ry || 0, it.rz || 0)), new THREE.Vector3(...sc));
+  g.applyMatrix4(m);
+  return g;
+}
+// merged vertex-coloured geometry from procedural ({geo,color}) and model ({model}) items; 1 draw call per template.
+function mergeItems(items) {
+  const q = new THREE.Quaternion(), e = new THREE.Euler(), mtx = new THREE.Matrix4();
+  const gs = [];
+  for (const it of items) {
+    if (it.model) { const g = modelItem(it); if (g) gs.push(g); continue; }
+    const { geo, color, pos = [0, 0, 0], rot = [0, 0, 0], scale = [1, 1, 1] } = it;
+    const g = geo.clone(); q.setFromEuler(e.set(...rot)); mtx.compose(new THREE.Vector3(...pos), q, new THREE.Vector3(...scale)); g.applyMatrix4(mtx);
+    const n = g.attributes.position.count, a = new Float32Array(n * 3), c = new THREE.Color(color);
+    for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(a, 3)); g.deleteAttribute('uv');
+    gs.push(g.index ? g.toNonIndexed() : g);
+  }
+  return mergeGeometries(gs.map(g => { const o = new THREE.BufferGeometry(); for (const k of ['position', 'normal', 'color']) o.setAttribute(k, g.attributes[k]); return o; }));
+}
+const MD = (model, o = {}) => ({ model, ...o });
 
 // ---------- part helpers (all return mergeColored items) ----------
 const box = (w, h, d, x, y, z, color, ry = 0, rz = 0) => ({ geo: new THREE.BoxGeometry(w, h, d), color, pos: [x, y, z], rot: [0, ry, rz] });
@@ -47,18 +110,84 @@ Object.assign(B, {
 });
 function plush(sp) { const c = PLUSH_COLORS[sp]; return { solid: [sph(0.42, 0, 0.42, 0, c, [1, 0.9, 1]), sph(0.3, 0, 0.95, 0, c), sph(0.11, -0.2, 1.2, 0, c, [1, 1.5, 0.7]), sph(0.11, 0.2, 1.2, 0, c, [1, 1.5, 0.7]), sph(0.045, -0.1, 0.98, 0.27, '#2a1d2e'), sph(0.045, 0.1, 0.98, 0.27, '#2a1d2e'), sph(0.07, 0, 0.9, 0.29, '#ffd1dc', [1, 0.6, 0.5]), sph(0.1, 0, 0.5, -0.4, '#ffffff')] }; }
 
+// ---------- model-based builders (final metres, SCALE=1). Fall back to the procedural builders above if a model failed to load. ----------
+const HP = Math.PI / 2;
+const NEW = {
+  d_house: () => {
+    const m = 2.2, W = (name, x, z, ry) => MD(name, { pos: [x, 0.3, z], ry, s: m, rule: 'cream' });
+    return { solid: [
+      box(4.9, 0.3, 4.9, 0, 0.15, 0, '#cbbfb0'),
+      W('wall-door', -1.1, m, HP), W('wall-window-shutters', 1.1, m, HP), W('wall-window-small', -1.1, -m, HP), W('wall-window-small', 1.1, -m, HP),
+      W('wall-window-small', m, -1.1, 0), W('wall', m, 1.1, 0), W('wall-window-small', -m, -1.1, 0), W('wall-window-small', -m, 1.1, 0),
+      MD('roof-gable', { pos: [-1.2, 2.5, 0], s: [2.2, 3.0, 4.5], rule: 'roofPink' }), MD('roof-gable', { pos: [1.2, 2.5, 0], s: [2.2, 3.0, 4.5], rule: 'roofPink' }),
+      MD('chimney', { pos: [1.5, 3.1, -0.9], s: [2.2, 1.5, 2.2], rule: 'stoneWarm' }),
+      MD('planks', { pos: [-1.1, 0.3, m + 0.45], s: [1.2, 2, 0.8], rule: 'warm' }),
+      box(1.1, 0.22, 0.34, 1.1, 0.72, m + 0.3, '#a86e48'), ...[-0.3, 0, 0.3].map((dx, i) => sph(0.11, 1.1 + dx, 0.9, m + 0.3, ['#ff8fb3', '#fff27a', '#ffffff'][i])),
+    ] };
+  },
+  d_windmill: () => {
+    const m = 2.6, W = (name, x, z, ry, y) => MD(name, { pos: [x, y, z], ry, s: m, rule: 'cream' });
+    const ring = (y, front) => [W(front, 0, m / 2, HP, y), W('wall-window-small', 0, -m / 2, HP, y), W('wall-window-small', m / 2, 0, 0, y), W('wall-window-small', -m / 2, 0, 0, y)];
+    return { solid: [
+      box(3.0, 0.3, 3.0, 0, 0.15, 0, '#cbbfb0'), ...ring(0.3, 'wall-door'), ...ring(0.3 + m, 'wall'),
+      MD('roof-high-point', { pos: [0, 0.3 + 2 * m - 0.1, 0], s: [3.3, 2.4, 3.3], rule: 'roofPink' }),
+      cyl(0.16, 0.16, 0.9, 0, 4.4, m / 2 + 0.2, '#8a5a3a', 8),
+    ], spin: { origin: [0, 4.4, m / 2 + 0.7], parts: [MD('windmill', { raw: true, ry: HP, s: 1.75, rule: 'warm' })] } };
+  },
+  d_gazebo: () => ({ solid: [
+    cyl(2.3, 2.4, 0.22, 0, 0.11, 0, '#e2d2b8', 8), MD('planks', { pos: [0, 0.22, 0], s: [3.2, 2.5, 3.2], rule: 'warm' }),
+    ...[[1, 1], [-1, 1], [1, -1], [-1, -1]].map(([x, z]) => MD('pillar-wood', { pos: [x * 1.5, 0.22, z * 1.5], s: [2.6, 2.7, 2.6], tint: '#fff2dc' })),
+    MD('poles-horizontal', { pos: [0, 0.22, -1.5], ry: HP, s: [1.6, 0.9, 3.0], rule: 'warm' }), MD('poles-horizontal', { pos: [1.5, 0.22, 0], s: [1.6, 0.9, 3.0], rule: 'warm' }), MD('poles-horizontal', { pos: [-1.5, 0.22, 0], s: [1.6, 0.9, 3.0], rule: 'warm' }),
+    MD('roof-high-point', { pos: [0, 2.85, 0], s: [4.5, 2.1, 4.5], rule: 'roofPink' }), sph(0.16, 0, 4.95, 0, '#ffe066'),
+  ] }),
+  d_well: () => ({ solid: [
+    MD('fountain-round', { s: [0.85, 2.0, 0.85], rule: 'stoneWarm' }),
+    ...[-1, 1].map(z => MD('pillar-wood', { pos: [0, 0.4, z * 0.78], s: [2.2, 2.2, 2.2], tint: '#fff2dc' })),
+    MD('roof-gable', { pos: [0, 2.35, 0], s: [2.2, 1.7, 2.2], rule: 'roofPink' }),
+    cyl(0.07, 0.07, 1.7, 0, 1.9, 0, '#9a6b45', 6), cyl(0.16, 0.14, 0.2, 0.0, 1.35, 0, '#b9916a', 8),
+  ] }),
+  d_bridge: () => {
+    const L = 1.4, arc = t => (0.18 + Math.sin(t * Math.PI) * 0.5) * L, X = t => (-1.6 + t * 3.2) * L;
+    const rail = [], post = [];
+    for (const z of [-0.72, 0.72]) {
+      for (let i = 0; i < 5; i++) { const t = i / 4; post.push(MD('pillar-wood', { pos: [X(t), arc(t) - 0.02, z], s: [1.3, 0.95, 1.3], tint: '#fff2dc' })); }
+      for (let i = 0; i < 4; i++) { const t0 = i / 4, t1 = (i + 1) / 4, x0 = X(t0), x1 = X(t1), y0 = arc(t0) + 1.0, y1 = arc(t1) + 1.0; rail.push({ geo: new THREE.BoxGeometry(Math.hypot(x1 - x0, y1 - y0) + 0.1, 0.1, 0.12), color: '#f2d9a8', pos: [(x0 + x1) / 2, (y0 + y1) / 2, z], rot: [0, 0, Math.atan2(y1 - y0, x1 - x0)] }); }
+    }
+    return { solid: [...Array.from({ length: 9 }, (_, i) => { const t = i / 8; return MD('planks', { pos: [X(t), arc(t), 0], rz: (t - 0.5) * -0.8, s: [0.62, 3, 1.5], rule: 'warm' }); }), ...post, ...rail] };
+  },
+  d_fence: () => ({ solid: [MD('fence', { ry: HP, s: [1.7, 2.3, 1.6], rule: 'warm', tint: '#fff2e2' })] }),
+  d_hedge: () => ({ solid: [MD('hedge-large', { ry: HP, s: [2.3, 2.0, 1.75], rule: 'leaf' }), sph(0.09, 0.2, 1.15, 0.3, '#ff8fb3'), sph(0.09, -0.35, 1.05, 0.34, '#fff27a'), sph(0.09, 0.55, 0.95, 0.38, '#ffffff'), sph(0.09, -0.65, 0.9, -0.3, '#ffb36b')] }),
+  d_bench: () => ({ solid: [MD('bench', { ry: 0, s: [5.6, 3.5, 4.0], paint: '#e9b36b' }), box(0.5, 0.1, 0.4, -0.45, 0.62, 0.02, '#ff9ec4'), box(0.5, 0.1, 0.4, 0.45, 0.62, 0.02, '#9fd8ff')] }),
+  d_table: () => ({ solid: [MD('tableRound', { s: 2.3, paint: '#f2c98a' }), MD('stall-stool', { pos: [1.15, 0, 0.3], s: 2.2, rule: 'warm' }), MD('stall-stool', { pos: [-0.95, 0, -0.7], s: 2.2, rule: 'warm', ry: 0.7 }), cyl(0.12, 0.1, 0.12, 0.1, 0.82, 0.05, '#ffffff', 10), sph(0.1, -0.2, 0.9, -0.15, '#ff7a9a'), cyl(0.08, 0.08, 0.04, 0.3, 0.79, 0.3, '#ffe5a0', 10)] }),
+  d_sign: () => ({ solid: [MD('signpost', { s: 3.4, rule: 'warm' })] }),
+  d_lantern: () => ({ solid: [MD('pillar-wood', { s: [1.7, 2.0, 1.7], rule: 'warm' }), box(0.7, 0.07, 0.07, 0.3, 1.9, 0, '#9a6b45'), box(0.3, 0.05, 0.3, 0.6, 1.62, 0, '#5a4a60'), box(0.3, 0.05, 0.3, 0.6, 1.08, 0, '#5a4a60'), ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => box(0.035, 0.52, 0.035, 0.6 + a * 0.13, 1.35, b * 0.13, '#5a4a60')), MD('roof-point', { pos: [0.6, 1.64, 0], s: [0.4, 0.6, 0.4], tint: '#8f7a9a' })], glow: [sph(0.15, 0.6, 1.35, 0, '#ffe9a0')] }),
+  d_lamppost: () => ({ solid: [MD('lantern', { s: 1.7, rule: 'dark' })], glow: [sph(0.17, 0, 2.4, 0, '#fff0a0')] }),
+  d_sapling: () => ({ solid: [MD('tree-high-round', { s: [1.7, 1.05, 1.7], rule: 'blossom' })] }),
+  d_stones: () => ({ solid: [MD('rock-flat', { s: [0.55, 1.6, 0.55], rule: 'stoneWarm' })] }),
+  d_path: () => ({ solid: [MD('road', { s: [1.25, 3, 1.25], paint: '#dba995', ry: 0.2 }), MD('road', { pos: [0, 0.08, 0], s: [0.8, 2, 0.8], paint: '#efc9b6', ry: 0.2 })] }),
+  d_picnic: () => ({ solid: [MD('rugSquare', { s: 1.75, ry: 0.15 }), cyl(0.2, 0.2, 0.1, 0.3, 0.1, 0.2, '#ffe5a0', 12), sph(0.1, -0.4, 0.14, -0.2, '#ff4d6d'), sph(0.1, -0.2, 0.14, -0.35, '#9a6bff'), box(0.4, 0.2, 0.3, 0.5, 0.14, -0.35, '#c98f55')] }),
+  b_floor: () => ({ solid: [box(2, 2.2, 2, 0, -0.9, 0, '#cbbfb0'), MD('planks', { pos: [0, 0.2, 0], s: [2.0, 2.2, 2.0], rule: 'warm' })] }),
+  b_wall: () => ({ solid: [MD('wall', { pos: [0, 0.32, 0], ry: HP, s: 2, rule: 'cream' })] }),
+  b_door: () => ({ solid: [MD('wall-doorway-square', { pos: [0, 0.32, 0], ry: HP, s: 2, rule: 'cream' }), MD('planks', { pos: [0, 0.2, 0.55], s: [0.9, 2, 0.6], rule: 'warm' })] }),
+  b_roof: () => ({ solid: [MD('roof-point', { pos: [0, 0.32, 0], s: [2.3, 3.0, 2.3], rule: 'roofPink' })] }),
+};
+
 const TINTS = ['#ffffff', '#ffc9dc', '#c9e4ff', '#cff3c9', '#fff0a8', '#dccbff'];
 export const TINT_COUNT = TINTS.length, SIZES = [0.8, 1, 1.3];
 const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });
 const templates = new Map();
 function template(id) {
   if (templates.has(id)) return templates.get(id);
-  const b = DECOR_BY_ID[id].species ? plush(DECOR_BY_ID[id].species) : B[id]();
-  const t = { solid: mergeColored(b.solid), glow: b.glow && mergeColored(b.glow), spin: b.spin && { origin: b.spin.origin, geo: mergeColored(b.spin.parts) } };
+  const sp = DECOR_BY_ID[id].species, ok = hasModel('dc_wall');
+  const b = sp ? plush(sp) : (ok && NEW[id] ? NEW[id]() : B[id]());
+  const t = { solid: mergeItems(b.solid), glow: b.glow && mergeItems(b.glow), spin: b.spin && { origin: b.spin.origin, geo: mergeItems(b.spin.parts) } };
   templates.set(id, t); return t;
 }
-const SCALE = { d_house: 2.0, d_windmill: 2.0, d_lantern: 1.8, d_well: 1.6, d_arch: 1.5, d_sapling: 1.6, d_mushlamp: 1.7, d_bridge: 1.4, d_flowerbed: 1.5, d_bench: 1.5, d_sign: 1.5, d_table: 1.5, d_gazebo: 1.5, d_lamppost: 1.4, d_hedge: 1.4, d_mailbox: 1.5, d_stones: 1.4, d_path: 1.4, d_fence: 1.4 };
-const ghostMat = () => new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, depthTest: false });
+const SCALE_OLD = { d_house: 2.0, d_windmill: 2.0, d_lantern: 1.8, d_well: 1.6, d_arch: 1.5, d_sapling: 1.6, d_mushlamp: 1.7, d_bridge: 1.4, d_flowerbed: 1.5, d_bench: 1.5, d_sign: 1.5, d_table: 1.5, d_gazebo: 1.5, d_lamppost: 1.4, d_hedge: 1.4, d_mailbox: 1.5, d_stones: 1.4, d_path: 1.4, d_fence: 1.4 };
+// model builders are authored in final metres (scale 1); procedural fallbacks keep their old scale
+const SCALE = new Proxy({}, { get: (_, id) => (hasModel('dc_wall') && NEW[id]) ? 1 : SCALE_OLD[id] });
+const FOOT = { d_house: 2.4, d_windmill: 1.8, d_gazebo: 2.0, d_well: 1.2, d_bridge: 1.7, d_arch: 1.6, d_table: 1.3, d_bench: 1.1, d_hedge: 0.9, d_fence: 0.8, d_sapling: 0.8, d_lamppost: 0.5, d_lantern: 0.5 };
+const ghostMat = () => new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.78, depthWrite: true, depthTest: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 function makeMesh(id, ghost = false, s = 1, v = 0) {
   const t = template(id), g = new THREE.Group(), kit = DECOR_BY_ID[id].kind === 'kit';
   const inner = new THREE.Group(); g.add(inner);
@@ -69,7 +198,7 @@ function makeMesh(id, ghost = false, s = 1, v = 0) {
   inner.scale.setScalar((kit ? 1 : (SCALE[id] || 1.4)) * (kit ? 1 : (SIZES[s] ?? 1)));
   return g;
 }
-const footprint = (id) => { const k = DECOR_BY_ID[id].kind; return k === 'kit' ? 1.2 : Math.max(0.7, 0.55 * (SCALE[id] || 1.4)); };
+const footprint = (id) => { const k = DECOR_BY_ID[id].kind; return k === 'kit' ? 1.2 : (hasModel('dc_wall') && FOOT[id]) || Math.max(0.7, 0.55 * (SCALE_OLD[id] || 1.4)); };
 
 // ---------- world state ----------
 let scene, player, placed = [], ghost = null, ring = null, beam = null, mode = null, fx;
@@ -78,7 +207,7 @@ export const charm = () => state.decor.reduce((a, d) => a + (DECOR_BY_ID[d.id]?.
 export const decorCount = () => state.decor.length;
 export const isPlacing = () => !!mode;
 // Nature culling: tell grass/flowers where decor sits (world.clearings is read by src/nature; first 32 entries drive the grass).
-const CLEAR_R = { b_floor: 1.7, d_house: 2.7, d_gazebo: 2.4, d_windmill: 2.3, d_well: 1.5, d_bridge: 2.0, d_table: 1.3, d_picnic: 1.4, d_fairy: 1.2, d_bench: 1.1, d_gallery: 0 };
+const CLEAR_R = { b_floor: 1.7, d_house: 3.1, d_gazebo: 2.7, d_windmill: 2.4, d_well: 1.5, d_bridge: 2.4, d_table: 1.3, d_picnic: 1.4, d_fairy: 1.2, d_bench: 1.1, d_gallery: 0 };
 function syncClearings() {
   const list = [];
   for (const d of state.decor) { const r = CLEAR_R[d.id]; if (r) list.push({ x: d.x, z: d.z, r: r * (d.id === 'b_floor' ? 1 : (SIZES[d.s ?? 1] ?? 1)) }); }
@@ -146,7 +275,8 @@ export function tickDecor(dt, t) {
   for (const p of placed) if (p.m.userData.spin) p.m.userData.spin.rotation.z += dt * 0.8;
   if (!mode) return;
   const pos = player.mesh.position, ry = player.mesh.rotation.y, def = DECOR_BY_ID[mode.id];
-  const [x, z] = snapPos(pos.x + Math.sin(ry) * 3.2, pos.z + Math.cos(ry) * 3.2, mode.id, mode.rot);
+  const dist = 3.2 + (def.kind === 'kit' ? 0 : Math.max(0, footprint(mode.id) * (SIZES[mode.s] ?? 1) - 1.2) * 0.9);
+  const [x, z] = snapPos(pos.x + Math.sin(ry) * dist, pos.z + Math.cos(ry) * dist, mode.id, mode.rot);
   const chk = check(x, z, mode.id, mode.rot), ok = chk.ok, y = (def.kind === 'kit' ? kitLevel(x, z, mode.moving ?? -1) : heightAt(x, z)) + (def.elev || 0);
   ghost.position.set(x, Math.max(y, 0), z); ghost.rotation.y = mode.rot * Math.PI / 4; ghost.userData.spin?.rotateZ(dt);
   const gy = Math.max(def.kind === 'kit' ? y - (def.elev || 0) : heightAt(x, z), 0), col = ok ? '#7dffb0' : '#ff7a7a', fp = footprint(mode.id) * (def.kind === 'kit' ? 1 : (SIZES[mode.s] ?? 1));
