@@ -3,6 +3,20 @@ import { toonUnique, toon, part, sphereGeo, Mat, mergeColored, bake } from './to
 import { addFace, Blinker } from './face.js';
 
 const S = () => sphereGeo(1, 28, 18);
+// tapered rounded limb: origin at the top, hangs down `len`; radius r0 at the top -> r1 at the bottom (lathe, bottom->top for outward normals)
+const limbCache = {};
+function limb(r0, r1, len) {
+  const k = [r0, r1, len].join('|'); if (limbCache[k]) return limbCache[k];
+  const pts = [];
+  for (let i = 0; i <= 6; i++) { const b = (1 - i / 6) * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.001, r1 * Math.cos(b)), -len + r1 - r1 * Math.sin(b))); }
+  for (let i = 0; i <= 6; i++) { const a = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.001, r0 * Math.sin(a)), -r0 + r0 * Math.cos(a))); }
+  return limbCache[k] = new THREE.LatheGeometry(pts, 16);
+}
+// shirt body: waist-pinched, flared hem, sloped shoulders (profile bottom->top)
+const TORSO_PTS = [[0.40, -0.33], [0.395, -0.24], [0.345, -0.1], [0.345, 0.04], [0.37, 0.18], [0.33, 0.29], [0.21, 0.36]];
+const torsoCurve = new THREE.SplineCurve(TORSO_PTS.map(([r, y]) => new THREE.Vector2(r, y))).getPoints(36);
+const torsoGeo = new THREE.LatheGeometry([new THREE.Vector2(0.001, -0.335), ...torsoCurve, new THREE.Vector2(0.001, 0.375)], 32);
+const torsoR = (y) => { let best = torsoCurve[0]; for (const p of torsoCurve) if (Math.abs(p.y - y) < Math.abs(best.y - y)) best = p; return best.x; };
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = THREE.MathUtils.lerp, damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
 const LEGACY = { hat_none: 'none', hat_party: 'party', hat_crown: 'crown', hat_straw: 'straw', hat_cat: 'cat', hat_flower: 'flower', hat_cap: 'cap', hat_beanie: 'beanie', hat_wizard: 'wizard', hat_halo: 'halo', catears: 'cat', cat_ears: 'cat' };
@@ -53,20 +67,24 @@ export function buildHero(opts = {}) {
   const root = new THREE.Group();
   const rig = new THREE.Group(); root.add(rig);        // squash & stretch around the feet
   const mats = {
-    skin: toonUnique('#ffd9bd', { rim: 0.25, rimColor: '#ffd0c0' }),
+    skin: toonUnique('#fcd0b2', { rim: 0.16, rimColor: '#ffbfa6', sat: 0.22, cool: 0.05, fill: 0.12 }),
     shirt: toonUnique('#ff6b6b', { fuzz: 0.12, rim: 0.3 }),
     pants: toonUnique('#5b86ff', { fuzz: 0.12 }),
     hair: toonUnique('#6b4429', { rim: 0.5, rimColor: '#ffd9a8', fuzz: 0.1, fill: 0.22 }),
     shoe: toonUnique('#fff4e6'), sole: toonUnique('#d9c3a8', { rim: 0 }),
     pack: toonUnique('#ffc94d', { fuzz: 0.12 }),
+    hairHi: toonUnique('#8a5733', { rim: 0.3, rimColor: '#ffe2b0', fuzz: 0.05, fill: 0.2 }),
   };
 
   // legs: hip pivot -> knee pivot -> shoe
   const legs = [-1, 1].map(sx => {
     const g = new THREE.Group(); g.position.set(sx * 0.19, 0.8, 0); rig.add(g);
-    part(g, new THREE.CapsuleGeometry(0.15, 0.17, 6, 12), mats.pants, { pos: [0, -0.18, 0] });
+    part(g, limb(0.158, 0.138, 0.42), mats.pants, { pos: [0, 0.05, 0] });
+    part(g, new THREE.TorusGeometry(0.139, 0.02, 6, 18), toon('#fff4e0', { fuzz: 0.1, rim: 0 }), { pos: [0, -0.3, 0], rot: [Math.PI / 2, 0, 0], line: 0 });
     const knee = new THREE.Group(); knee.position.y = -0.36; g.add(knee);
-    part(knee, new THREE.CapsuleGeometry(0.125, 0.15, 6, 12), mats.skin, { pos: [0, -0.14, 0] });
+    part(knee, limb(0.118, 0.082, 0.36), mats.skin, { pos: [0, 0.06, 0] });
+    part(knee, S(), mats.skin, { pos: [0, 0.0, 0.1], scale: [0.1, 0.08, 0.05], line: 0 });
+    part(knee, new THREE.TorusGeometry(0.087, 0.032, 8, 18), toon('#fff4e0', { fuzz: 0.2, rim: 0 }), { pos: [0, -0.2, 0], rot: [Math.PI / 2, 0, 0], line: 0.012 });
     const foot = new THREE.Group(); foot.position.y = -0.29; knee.add(foot);
     part(foot, S(), mats.shoe, { pos: [0, -0.06, 0.07], scale: [0.2, 0.13, 0.29] });
     part(foot, S(), mats.shoe, { pos: [0, -0.05, 0.26], scale: [0.165, 0.1, 0.14], line: 0.02 });
@@ -78,12 +96,11 @@ export function buildHero(opts = {}) {
 
   // torso
   const torso = new THREE.Group(); torso.position.y = 1.06; rig.add(torso);
-  part(torso, new THREE.CapsuleGeometry(0.36, 0.12, 8, 18), mats.shirt, { pos: [0, 0.02, 0], scale: [1, 1, 0.92] });
-  part(torso, new THREE.CylinderGeometry(0.37, 0.45, 0.16, 24), mats.shirt, { pos: [0, -0.24, 0], scale: [1, 1, 0.92], line: 0.02 }); // shirt hem flare
+  part(torso, torsoGeo, mats.shirt, { scale: [1, 1, 0.92] });
   part(torso, S(), mats.pants, { pos: [0, -0.32, 0], scale: [0.4, 0.14, 0.36], line: 0 });                                          // shorts
   part(torso, new THREE.TorusGeometry(0.2, 0.05, 8, 20), toon('#fff1de', { fuzz: 0.1 }), { pos: [0, 0.34, 0.04], rot: [Math.PI / 2 - 0.15, 0, 0], line: 0.015 }); // collar
-  part(torso, new THREE.CylinderGeometry(0.372, 0.385, 0.07, 24), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, 0.0, 0], scale: [1, 1, 0.92], line: 0 });
-  part(torso, new THREE.CylinderGeometry(0.385, 0.4, 0.045, 24), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, -0.1, 0], scale: [1, 1, 0.92], line: 0 });
+  part(torso, new THREE.CylinderGeometry(torsoR(0.03) + 0.006, torsoR(0.03) + 0.006, 0.07, 28), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, 0.03, 0], scale: [1, 1, 0.92], line: 0 });
+  part(torso, new THREE.CylinderGeometry(torsoR(-0.12) + 0.006, torsoR(-0.12) + 0.008, 0.045, 28), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, -0.12, 0], scale: [1, 1, 0.92], line: 0 });
   part(torso, S(), toon('#fff4e0', { fuzz: 0.1, rim: 0.1 }), { pos: [0.17, 0.08, 0.31], scale: [0.1, 0.085, 0.03], rot: [-0.15, 0.2, 0], line: 0.012 });
   part(torso, new THREE.CylinderGeometry(0.4, 0.41, 0.07, 24), toon('#7a4f2a', { fuzz: 0.1 }), { pos: [0, -0.34, 0], scale: [1, 1, 0.9], line: 0.012 });
   part(torso, S(), toon('#ffd54a', { rim: 0.3 }), { pos: [0, -0.34, 0.37], scale: [0.06, 0.05, 0.02], line: 0.01 });
@@ -98,14 +115,18 @@ export function buildHero(opts = {}) {
   // arms: shoulder -> elbow -> mitten hand with thumb
   const arms = [-1, 1].map(sx => {
     const g = new THREE.Group(); g.position.set(sx * 0.47, 0.25, 0); torso.add(g);
-    part(g, new THREE.CapsuleGeometry(0.12, 0.15, 6, 10), mats.shirt, { pos: [0, -0.14, 0] });
-    part(g, new THREE.TorusGeometry(0.115, 0.032, 6, 14), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, -0.255, 0], rot: [Math.PI / 2, 0, 0], line: 0.012 });
+    part(g, limb(0.135, 0.112, 0.38), mats.shirt, { pos: [0, 0.08, 0] });
+    part(g, new THREE.TorusGeometry(0.114, 0.03, 6, 16), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, -0.25, 0], rot: [Math.PI / 2, 0, 0], line: 0.012 });
     const elbow = new THREE.Group(); elbow.position.y = -0.3; g.add(elbow);
-    part(elbow, new THREE.CapsuleGeometry(0.095, 0.14, 6, 10), mats.skin, { pos: [0, -0.12, 0] });
+    part(elbow, limb(0.098, 0.074, 0.38), mats.skin, { pos: [0, 0.06, 0] });
+    part(elbow, S(), mats.skin, { pos: [0, 0.0, -0.05], scale: [0.09, 0.09, 0.07], line: 0 });
     const hand = new THREE.Group(); hand.position.y = -0.34; elbow.add(hand);
-    part(hand, S(), mats.skin, { pos: [0, -0.07, 0.01], scale: [0.14, 0.15, 0.115], line: 0.022 });
-    part(hand, S(), mats.skin, { pos: [-sx * 0.13, -0.05, 0.07], scale: [0.065, 0.09, 0.065], line: 0.018, rot: [0.3, 0, -sx * 0.5] });
-    for (const fx of [-0.07, 0, 0.07]) part(hand, S(), mats.skin, { pos: [fx, -0.2, 0.025], scale: [0.045, 0.085, 0.05], line: 0.014 });
+    // hand: flattened palm, four tapered fingers curling forward, opposable thumb
+    part(hand, S(), mats.skin, { pos: [0, -0.07, 0.0], scale: [0.115, 0.1, 0.07], line: 0.016 });
+    [[-0.07, 0.10, -0.12], [-0.024, 0.125, -0.04], [0.024, 0.12, 0.04], [0.068, 0.095, 0.12]].forEach(([fx, fl, fz]) => {
+      const f = part(hand, limb(0.031, 0.026, fl + 0.07), mats.skin, { pos: [fx * (sx > 0 ? -1 : 1), -0.12, 0.0], rot: [-0.55, 0, fz * (sx > 0 ? -1 : 1)], line: 0.01 });
+    });
+    part(hand, limb(0.04, 0.034, 0.13), mats.skin, { pos: [-sx * 0.1, -0.08, 0.03], rot: [-0.5, 0, -sx * 0.9], line: 0.012 });
     g.userData = { elbow, hand }; return g;
   });
 
@@ -127,7 +148,7 @@ export function buildHero(opts = {}) {
   mats.hairShell = hairCutMat(toonUnique('#6b4429', { rim: 0.5, rimColor: '#ffd9a8', fuzz: 0.1, fill: 0.22 }), 0);
   mats.hairShell2 = hairCutMat(toonUnique('#6b4429', { rim: 0.5, rimColor: '#ffd9a8', fuzz: 0.1, fill: 0.22 }), 0.15);
   const shell = new THREE.Mesh(hairShell(), mats.hairShell); shell.scale.set(HRX * 1.07, HR * 1.07, HR * 1.09); shell.position.set(0, 0.54, -0.03); shell.rotation.x = -0.05; shell.castShadow = true; shell.userData.noBake = true; hair.add(shell);
-  hairOutline(shell, 0, 0.03 / 1.08);
+  hairOutline(shell, 0, 0.018 / 1.08);
   const HRs = [HRX * 1.08, HR * 1.08, HR * 1.1];
   const onHair = (az, el, push = 1) => [Math.sin(az) * Math.cos(el) * HRs[0] * push, 0.54 + Math.sin(el) * HRs[1] * push, Math.cos(az) * Math.cos(el) * HRs[2] * push - 0.03];
   const lockPts = [[0.001, 0], [0.04, 0.05], [0.085, 0.14], [0.1, 0.24], [0.08, 0.32], [0.001, 0.36]].map(([x, y]) => new THREE.Vector2(x, y));
@@ -149,13 +170,12 @@ export function buildHero(opts = {}) {
   part(hair, S(), mats.hair, { pos: onHair(Math.PI, -0.1, 0.99), scale: [0.26, 0.12, 0.1], line: 0.022 });
   for (const sx of [-1, 1]) part(hair, S(), mats.hair, { pos: onHair(Math.PI + sx * 0.8, -0.3, 0.98), scale: [0.15, 0.17, 0.13], line: 0.02 });
   // upper layer shell: slightly rotated so a ridge shows (breaks the helmet look)
-  { const s2 = new THREE.Mesh(hairShell(), mats.hairShell2); s2.scale.set(HRX * 1.13, HR * 1.12, HR * 1.14); s2.position.set(0, 0.57, -0.06); s2.rotation.set(-0.12, 0.35, 0); s2.castShadow = true; s2.userData.noBake = true; hair.add(s2); hairOutline(s2, 0.15, 0.025 / 1.1); }
+  { const s2 = new THREE.Mesh(hairShell(), mats.hairShell2); s2.scale.set(HRX * 1.13, HR * 1.12, HR * 1.14); s2.position.set(0, 0.57, -0.06); s2.rotation.set(-0.12, 0.35, 0); s2.castShadow = true; s2.userData.noBake = true; hair.add(s2); hairOutline(s2, 0.15, 0.016 / 1.1); }
   // crown tufts: layered locks sweeping back from a parting so the top reads as styled hair from above
   for (const [az, el, len, w, yaw] of [[0.5, 1.15, 0.8, 1.2, 0.5], [-0.55, 1.12, 0.85, 1.25, -0.5], [0.0, 1.25, 0.7, 1.1, 0.0], [1.4, 1.0, 0.7, 1.0, 1.4], [-1.4, 1.0, 0.7, 1.0, -1.4], [3.0, 1.0, 0.8, 1.2, 3.1]]) {
     const m = part(hair, lockGeo, mats.hair, { pos: onHair(az, el, 1.02), scale: [1.05 * w, len * 1.1, 0.8 * w], line: 0.018 });
     m.rotation.order = 'YXZ'; m.rotation.set(az > 2 ? 0.9 : -0.9, yaw, 0);
   }
-  part(hair, S(), toon('#945a31', { rim: 0.4, rimColor: '#ffe2b0', fuzz: 0, fill: 0.15 }), { pos: onHair(0.15, 0.88, 1.01), scale: [0.16, 0.025, 0.07], rot: [-0.5, 0.2, 0.15], line: 0 });
   const ahoge = new THREE.Group(); ahoge.position.set(0.05, 1.12, 0.1); hair.add(ahoge);
   part(ahoge, new THREE.CapsuleGeometry(0.035, 0.22, 4, 8), mats.hair, { pos: [0, 0.12, 0], rot: [0, 0, -0.35], line: 0.02 });
   part(ahoge, S(), mats.hair, { pos: [-0.07, 0.3, 0], scale: [0.07, 0.07, 0.07], line: 0.015 });
@@ -222,7 +242,7 @@ export function buildHero(opts = {}) {
       const b = a + Math.PI / 5; items.push({ geo: sphereGeo(1, 8, 6), color: ['#ff4d6d', '#4db8ff', '#6bdc7a', '#c07bff', '#ff4d6d'][i], pos: [Math.sin(b) * 0.51, 0.0, Math.cos(b) * 0.51], scale: [0.055, 0.07, 0.04] });
     }
     part(g, mergeColored(items), vcMat({ emissive: '#ffb300', ei: 0.18, double: true, fuzz: 0, rim: 0.5 }), { line: 0.015 });
-    g.position.set(0, 0.6, -0.02); g.rotation.x = 0.1;
+    g.position.set(0, 0.53, -0.02); g.rotation.x = 0.1;
     hats.crown = g; hatHides.crown = ['ahoge'];
   }
   { // party hat
@@ -244,6 +264,30 @@ export function buildHero(opts = {}) {
     part(g, mergeColored(items), vcMat({ fuzz: 0.3, rim: 0.2 }), { line: 0.02 });
     g.position.set(0, 0.0, -0.05); g.rotation.x = -0.12;
     hats.cat = g; hatHides.cat = ['ahoge'];
+  }
+  { // wizard hat: wide brim, tall bent cone, gold band + star
+    const g = new THREE.Group(), items = [], ink = '#5b4bd6';
+    items.push({ geo: new THREE.CylinderGeometry(0.98, 1.02, 0.06, 32), color: '#4b3cc0', pos: [0, 0, 0] });
+    items.push({ geo: new THREE.TorusGeometry(1.0, 0.04, 6, 32), color: '#4b3cc0', pos: [0, 0.0, 0], rot: [Math.PI / 2, 0, 0] });
+    items.push({ geo: new THREE.CylinderGeometry(0.5, 0.64, 0.4, 28), color: ink, pos: [0, 0.2, 0] });
+    items.push({ geo: new THREE.CylinderGeometry(0.505, 0.505, 0.1, 28), color: '#ffd54a', pos: [0, 0.28, 0] });
+    items.push({ geo: new THREE.CylinderGeometry(0.26, 0.5, 0.5, 26), color: ink, pos: [0, 0.6, 0.0] });
+    items.push({ geo: new THREE.CylinderGeometry(0.06, 0.26, 0.4, 22), color: ink, pos: [0.0, 1.0, -0.06], rot: [-0.25, 0, 0] });
+    items.push({ geo: sphereGeo(1, 10, 8), color: '#fff27a', pos: [0, 1.22, -0.16], scale: [0.09, 0.09, 0.09] });
+    items.push({ geo: sphereGeo(1, 8, 6), color: '#fff27a', pos: [0.18, 0.62, 0.5], scale: [0.09, 0.09, 0.03] });
+    items.push({ geo: sphereGeo(1, 8, 6), color: '#fff27a', pos: [-0.22, 0.44, 0.46], scale: [0.06, 0.06, 0.03] });
+    part(g, mergeColored(items), vcMat({ fuzz: 0.2, double: true }), { line: 0.02 });
+    g.position.set(0, 0.5, 0.0); g.rotation.set(0.04, 0, -0.06);
+    hats.wizard = g; hatHides.wizard = ['ahoge'];
+  }
+  { // halo: floating gold ring with a soft glow, bobs gently
+    const g = new THREE.Group();
+    const ringM = toon('#ffcf3a', { emissive: '#ffb300', ei: 0.5, rim: 0.6, fill: 0.2 });
+    const r = part(g, new THREE.TorusGeometry(0.4, 0.055, 10, 36), ringM, { rot: [Math.PI / 2, 0, 0], line: 0.012 });
+    const glow = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.13, 8, 36), new THREE.MeshBasicMaterial({ color: '#fff0a0', transparent: true, opacity: 0.28, depthWrite: false }));
+    glow.rotation.x = Math.PI / 2; g.add(glow);
+    g.position.set(0, 0.78, -0.02); g.rotation.x = -0.12; g.userData.bob = true;
+    hats.halo = g; hatHides.halo = ['ahoge'];
   }
   const hideable = { bangs, ahoge, sides };
   for (const k in hats) { hats[k].visible = false; hatRoot.add(hats[k]); }
@@ -274,7 +318,7 @@ export function buildHero(opts = {}) {
       }
       if (o.shirt) mats.shirt.color.set(o.shirt);
       if (o.pants) mats.pants.color.set(o.pants);
-      if (o.hair) { mats.hair.color.set(o.hair); mats.hairShell.color.set(o.hair); mats.hairShell2.color.set(o.hair); }
+      if (o.hair) { mats.hair.color.set(o.hair); mats.hairShell.color.set(o.hair); mats.hairShell2.color.set(o.hair); mats.hairHi.color.set(o.hair).offsetHSL(0, 0, 0.06); }
       if (o.skin) mats.skin.color.set(o.skin);
       if (o.pack) mats.pack.color.set(o.pack);
       if (o.backpack !== undefined) pack.visible = !!o.backpack;
@@ -326,8 +370,8 @@ export function buildHero(opts = {}) {
       for (let i = 0; i < 2; i++) {
         const side = i ? 1 : -1, a = arms[i], { elbow, hand } = a.userData;
         if (emoOn) continue;
-        let rx = -side * sw * amp * 1.1 + st.crouch * 0.7, rz = (i ? 1 : -1) * 0.27 + st.crouch * (i ? 1 : -1) * 0.1;
-        let el = -(0.25 + run * 0.7) * mv - 0.12 - st.crouch * 0.2;
+        let rx = -side * sw * amp * 1.1 + st.crouch * 0.7 + 0.12, rz = (i ? 1 : -1) * 0.2 + st.crouch * (i ? 1 : -1) * 0.1;
+        let el = -(0.25 + run * 0.7) * mv - 0.3 - st.crouch * 0.2;
         if (side * sw < 0) el -= 0.3 * amp; // forward arm bends more
         if (air) { rx = lerp(a.rotation.x, -0.4, dt * 10); rz = (i ? -1 : 1) * (s.vy > 0 ? 2.3 : 1.4); el = -0.3; }
         if (i === 1 && st.wave > 0) { rx = 0; rz = -2.6 + Math.sin(t * 14) * 0.35; el = -0.5 + Math.sin(t * 14) * 0.3; }
@@ -360,6 +404,7 @@ export function buildHero(opts = {}) {
       st.hatVz += ((fz - st.hatZ) * 160 - st.hatVz * 10) * dt; st.hatZ += st.hatVz * dt;
       hatRoot.rotation.x = THREE.MathUtils.clamp(st.hatX, -0.4, 0.4); hatRoot.rotation.z = THREE.MathUtils.clamp(st.hatZ, -0.3, 0.3);
       hatRoot.position.y = 0.52 + Math.max(0, st.hatVx) * 0.004;
+      if (hats.halo.visible) hats.halo.position.y = 0.78 + Math.sin(t * 2.4) * 0.03;
       ahoge.rotation.z = Math.sin(t * 3) * 0.1 - (air ? s.vy * 0.03 : 0) - mv * 0.2 + st.hatZ * 1.5; ahoge.rotation.x = Math.sin(t * 2.3) * 0.08 + st.hatX * 1.5;
       bangs.rotation.x = st.hatX * 0.5 + (air ? Math.min(0.3, Math.max(-0.3, -s.vy * 0.02)) : 0); sides.rotation.z = st.hatZ * 0.3;
       // ---- emotes (override poses; blended in with lerps) ----

@@ -14,25 +14,25 @@ const cache = new Map();
 // Toon material: soft gradient, cool character rim + sun-independent fill (keeps characters readable at dusk/night),
 // optional procedural fuzz (felt / fur noise in object space) and fuzzy rim.
 export function toon(color, opts = {}) {
-  const key = `${color}|${opts.rim}|${opts.rimColor}|${opts.emissive}|${opts.ei}|${opts.fuzz}|${opts.fill}|${opts.vc}|${opts.double}|${opts.rimTint}`;
+  const key = `${color}|${opts.rim}|${opts.rimColor}|${opts.emissive}|${opts.ei}|${opts.fuzz}|${opts.fill}|${opts.vc}|${opts.double}|${opts.rimTint}|${opts.sat}|${opts.cool}`;
   if (cache.has(key)) return cache.get(key);
   const m = toonUnique(color, opts); cache.set(key, m); return m;
 }
 const COOL = new THREE.Color('#8fb4ff');
-export function toonUnique(color, { rim = 0.35, rimColor = '#fff3e0', emissive = null, ei = 0, fuzz = 0, fill = 0.1, vc = false, double = false, rimTint = false } = {}) {
+export function toonUnique(color, { rim = 0.35, rimColor = '#fff3e0', emissive = null, ei = 0, fuzz = 0, fill = 0.1, vc = false, double = false, rimTint = false, sat = 0, cool = 0.28 } = {}) {
   const m = new THREE.MeshToonMaterial({ color, gradientMap: gradient(), vertexColors: vc, side: double ? THREE.DoubleSide : THREE.FrontSide });
   if (emissive) { m.emissive = new THREE.Color(emissive); m.emissiveIntensity = ei; }
   m.userData.opts = { rim, fuzz, fill, emissive, ei, double, rimTint };
   const rc = new THREE.Color(rimColor);
   m.onBeforeCompile = (sh) => {
     sh.uniforms.rimColor = { value: rc }; sh.uniforms.rimAmt = { value: rim };
-    sh.uniforms.fuzzAmt = { value: fuzz }; sh.uniforms.fillAmt = { value: fill }; sh.uniforms.coolRim = { value: COOL }; sh.uniforms.rimTint = { value: rimTint ? 1 : 0 };
+    sh.uniforms.fuzzAmt = { value: fuzz }; sh.uniforms.fillAmt = { value: fill }; sh.uniforms.coolRim = { value: COOL }; sh.uniforms.rimTint = { value: rimTint ? 1 : 0 }; sh.uniforms.satAmt = { value: sat }; sh.uniforms.coolAmt = { value: cool };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vObjPos;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform vec3 rimColor; uniform float rimAmt; uniform float fuzzAmt; uniform float fillAmt; uniform vec3 coolRim; uniform float rimTint;
+uniform vec3 rimColor; uniform float rimAmt; uniform float fuzzAmt; uniform float fillAmt; uniform vec3 coolRim; uniform float rimTint; uniform float satAmt; uniform float coolAmt;
 varying vec3 vObjPos;
 float h31(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float vn(vec3 x){ vec3 i = floor(x), f = fract(x); f = f*f*(3.0-2.0*f);
@@ -45,10 +45,11 @@ float vn(vec3 x){ vec3 i = floor(x), f = fract(x); f = f*f*(3.0-2.0*f);
          if (fuzzAmt > 0.0) { vec3 q = vObjPos * 46.0; fz = vn(q) * 0.55 + vn(q * 2.1) * 0.45 - 0.5; outgoingLight *= 1.0 + fz * fuzzAmt; }
          outgoingLight += diffuseColor.rgb * fillAmt;
          outgoingLight += (rimTint > 0.5 ? mix(diffuseColor.rgb, vec3(1.0), 0.5) : rimColor) * rimF * rimAmt * (1.0 + fuzzAmt * 0.8 * (fz + 0.5));
-         outgoingLight += coolRim * pow(1.0 - ndv, 3.0) * 0.28;
+         outgoingLight += coolRim * pow(1.0 - ndv, 3.0) * coolAmt;
+         if (satAmt > 0.0) { float lum = dot(outgoingLight, vec3(0.299, 0.587, 0.114)); outgoingLight = mix(vec3(lum), outgoingLight, 1.0 + satAmt); outgoingLight += diffuseColor.rgb * vec3(0.07, 0.02, 0.0) * satAmt; }
          #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'toonrim3' + (vc ? 'v' : '') + (rimTint ? 't' : '');
+  m.customProgramCacheKey = () => 'toonrim4' + (vc ? 'v' : '') + (rimTint ? 't' : '') + sat + 'c' + cool;
   return m;
 }
 

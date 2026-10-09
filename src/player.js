@@ -15,7 +15,7 @@ export class Player {
     this.hero = this.mesh.userData.hero;
     this.fx = getFX(scene);
     this.camera = camera; this.vel = new THREE.Vector3(); this.onGround = true;
-    this.keys = {}; this.yaw = 0; this.pitch = 0.52; this.dist = 8.6; this.t = 0;
+    this.keys = {}; this.yaw = 0; this.pitch = 0.5; this.dist = 7.5; this.t = 0;
     this.speed = 0; this.moveDir = new THREE.Vector3(); this.coyote = 0; this.jumpBuf = 0; this.fov = camera.fov; this.baseFov = camera.fov;
     this.camDist = this.dist; this.lookAt = new THREE.Vector3(); this.camInit = false; this.vyPrev = 0;
     this.mesh.position.set(0, heightAt(0, 0), 0);
