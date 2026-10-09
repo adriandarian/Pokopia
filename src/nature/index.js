@@ -25,7 +25,7 @@ function setupLod(scene, meshes) {
     for (const m of meshes) {
       if (!m.instanceColor) continue;
       const st = m.userData.store, rad = m.userData.rad, ma = m.instanceMatrix.array, ca = m.instanceColor.array;
-      const maxD = rad > 2 ? 80 : 48; let n = 0;
+      const maxD = rad > 2 ? 52 : 30; let n = 0;
       for (let i = 0; i < st.n; i++) {
         const x = st.pos[i * 3], y = st.pos[i * 3 + 1], z = st.pos[i * 3 + 2], rr = rad * st.sc[i] + 14;
         const dx = x - cp.x, dz = z - cp.z; if (dx * dx + dz * dz > (maxD + rr) * (maxD + rr)) continue;
@@ -188,17 +188,17 @@ export function scatterNature(scene) {
   }
   // flowers in patches
   const pal = [['#ff7eb6', '#ffe36a'], ['#ffd23f', '#e8892b'], ['#ffffff', '#ffd23f'], ['#b28dff', '#fff2a0'], ['#ff9f43', '#7a3b1a'], ['#7ec8ff', '#fff2a0']];
-  const fl = pal.map((p, pi) => inst(S.flower(p[0], p[1], pi === 1 || pi === 4), mkMat({ amp: 0.06, heightGain: 0.1, speed: 2 }), 900, { cast: false }));
+  const fl = pal.map((p, pi) => inst(S.flower(p[0], p[1], pi === 1 || pi === 4), Object.assign(mkMat({ amp: 0.06, heightGain: 0.1, speed: 2 }), { roughness: 0.42 }), 1300, { cast: false }));
   tries = 0; let nf = 0;
-  while (tries++ < 40000 && nf < 4200) {
+  while (tries++ < 40000 && nf < 6500) {
     const x = (rnd() - 0.5) * WORLD * 0.92, z = (rnd() - 0.5) * WORLD * 0.92, h = heightAt(x, z);
     if (propClear.some(a => (a[0] - x) ** 2 + (a[1] - z) ** 2 < a[2] * a[2]) || h < 1.5 || h > 9 || pathMask(x, z) > 0.08 || pondD(x, z) < 1.0 || slopeAt(x, z) > 0.45) continue;
     const patch = fbm(x * 0.11, z * 0.11, 2, 33) * (0.5 + 0.75 * meadowMask(x, z));
-    if (patch < 0.45 || rnd() > (patch - 0.43) * 5) continue;
+    if (patch < 0.45 || rnd() > (patch - 0.43) * 8) continue;
     const k = Math.floor(fbm(x * 0.03 + 5, z * 0.03, 2, 8) * 2.3 * pal.length) % pal.length;
     const m = fl[(k + (rnd() < 0.15 ? 1 : 0)) % pal.length];
-    if (m.count >= 900) continue;
-    m.add1(x, h - 0.02, z, 0.8 + rnd() * 0.7, rnd() * 6.28, jitter(0.1), 0.8 + rnd() * 0.5, 0.15); nf++;
+    if (m.count >= 1300) continue;
+    m.add1(x, h - 0.02, z, 1.2 + rnd() * 0.8, rnd() * 6.28, jitter(0.1), 0.8 + rnd() * 0.4, 0.15); nf++;
   }
   for (const m of group) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }
 

@@ -6,6 +6,7 @@ import { Blinker } from './chars/face.js';
 import { bake, mergeColored, sphereGeo } from './chars/toon.js';
 import { pickIdle, stepIdle, ZERO, makeBerryProp } from './chars/idles.js';
 import { getFX, tickFX, world } from './chars/fx.js';
+import { softBlob } from './chars/hero.js';
 
 export { SPECIES };
 const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -20,8 +21,8 @@ function makeCreature(sp) {
   bake(rig, { vc: true });     // merge static parts + outline hulls: ~3 draws for the body instead of ~30
   const prop = makeBerryProp(); rig.add(prop);
   const meshes = []; rig.traverse(o => { if (o.isMesh && !o.userData.isOutline) { o.castShadow = true; meshes.push(o); } });
-  blobGeo = blobGeo || new THREE.CircleGeometry(0.7, 16).rotateX(-Math.PI / 2);
-  blobMat = blobMat || new THREE.MeshBasicMaterial({ color: '#1d2b12', transparent: true, opacity: 0.25, depthWrite: false });
+  blobGeo = blobGeo || new THREE.PlaneGeometry(1.7, 1.7).rotateX(-Math.PI / 2);
+  blobMat = blobMat || new THREE.MeshBasicMaterial({ color: '#10200a', map: softBlob(), transparent: true, opacity: 0.45, depthWrite: false });
   const blob = new THREE.Mesh(blobGeo, blobMat); blob.position.y = 0.05; blob.renderOrder = 1; m.add(blob);
   const lod = [...(parts.ears || []).map(e => e.g), ...(parts.wings || []).map(e => e.g), ...(parts.leaves || []).map(e => e.g), ...(parts.arms || []).map(e => e.g), parts.tail, parts.extra, parts.jaw, ...(parts.face.parts || [])].filter(Boolean);
   return { m, rig, blob, prop, meshes, lod, arms: [], ...parts };
@@ -106,7 +107,7 @@ export class Creatures {
       }
       if (c.pin) { wantSpeed = 0; faceYaw = c.pin.yaw ?? faceYaw; p.x = c.pin.x; p.z = c.pin.z; c.walking = false; }
       // idles run only while standing still; anything that makes it move (or crowds a wild one) wakes it up
-      if (c.idle && (wantSpeed > 0 || (!c.friend && near && c.idle.kind !== 'dance' && c.idle.kind !== 'look') || (c.idle.kind === 'sleep' && !c.friend && dist < 4))) c.idle = null;
+      if (c.idle && (wantSpeed > 0 || (!c.friend && near && c.idle.kind !== 'dance' && c.idle.kind !== 'look' && c.idle.kind === 'sleep') || (c.idle.kind === 'sleep' && !c.friend && dist < 4))) c.idle = null;
       if (c.idle && c.idle.kind !== 'look' && c.idle.kind !== 'dance') faceYaw = c.idle.kind === 'sleep' ? null : faceYaw;
       c.speed = damp(c.speed, wantSpeed, 6, dt);
       const moving = c.speed > 0.35;
@@ -153,13 +154,14 @@ export class Creatures {
         mod.berrySize = 1;
         if (stepIdle(c, dt, t, this.fx, mod)) { c.idle = null; c.idleCD = 3 + Math.random() * 7; }
       }
+      if (mod.slide) { const f = c.m.rotation.y, nx = p.x + Math.sin(f) * mod.slide * dt, nz = p.z + Math.cos(f) * mod.slide * dt; if (heightAt(nx, nz) > 0.7) { p.x = nx; p.z = nz; } }
       // ----- squash & stretch spring -----
       const idleB = 1 + Math.sin(t * 2.2 + ph) * 0.025;
       const tgt = airborne ? 1 + Math.min(0.18, (Math.abs(c.jv) + hop * 3) * 0.03) : idleB;
       c.svy += ((tgt - c.sy) * 240 - c.svy * 14) * dt; c.sy += c.svy * dt;
       const sy2 = c.sy * mod.sy, sxz = 1 / Math.sqrt(sy2);
       c.rig.scale.set(sxz, sy2, sxz); c.rig.position.y = mod.bounce;
-      c.rig.rotation.x = damp(c.rig.rotation.x, mod.rotX, 8, dt); c.rig.rotation.y = damp(c.rig.rotation.y, mod.rotY, 8, dt);
+      c.rig.rotation.x = damp(c.rig.rotation.x, mod.rotX, mod.slide ? 14 : 8, dt); c.rig.rotation.y = damp(c.rig.rotation.y, mod.rotY, 8, dt);
       c.rig.rotation.z = Math.sin(t * 1.3 + ph) * 0.03 * (1 - c.happy) + (faceYaw !== null && notice && !c.friend ? Math.sin(t * 3 + ph) * 0.05 * c.happy : 0) + mod.rotZ;
 
       // ----- appendages -----
@@ -192,7 +194,7 @@ export class Creatures {
 // ---------------- Collectibles: gems & berries (instanced: 1 draw call per type + 1 for all halos) ----------------
 function gemGeo() {
   const pts = [[0.001, -0.52], [0.1, -0.4], [0.2, -0.22], [0.37, 0.03], [0.4, 0.1], [0.36, 0.2], [0.27, 0.29], [0.17, 0.34], [0.09, 0.37], [0.001, 0.37]].map(([x, y]) => new THREE.Vector2(x, y));
-  const g = new THREE.LatheGeometry(pts, 8); g.computeVertexNormals(); return g.toNonIndexed();
+  const g = new THREE.LatheGeometry(pts, 8); g.scale(1.4, 1.4, 1.4); g.computeVertexNormals(); return g.toNonIndexed();
 }
 const sphere = (r, w = 12, h = 8) => sphereGeo(1, w, h);
 function berryGeo(kind) {
@@ -204,7 +206,7 @@ function berryGeo(kind) {
     it.push({ geo: new THREE.CylinderGeometry(0.022, 0.03, 0.2, 6), color: '#7a4a1e', pos: [0, 0.38, 0], rot: [0.2, 0, 0.15] });
     for (const sx of [-1, 1]) it.push({ geo: sphere(), color: '#9cff5a', pos: [sx * 0.12, 0.31, 0], scale: [0.16, 0.035, 0.08], rot: [0, 0, sx * 0.4] });
     for (let i = 0; i < 12; i++) { const a = i * 2.4, y = -0.18 + (i % 4) * 0.1, r = 0.27 * Math.sqrt(Math.max(0.1, 1 - ((y - 0.02) / 0.25) ** 2)) * (y < -0.05 ? 0.8 : 1); it.push({ geo: sphere(), color: '#ffe9a0', pos: [Math.sin(a) * r, y, Math.cos(a) * r], scale: [0.022, 0.034, 0.022] }); }
-    it.push({ geo: sphere(), color: '#ffffff', pos: [-0.1, 0.1, 0.2], scale: [0.09, 0.12, 0.05], rot: [0, -0.5, 0.4] });
+    it.push({ geo: sphere(), color: '#fff2f4', pos: [-0.1, 0.1, 0.2], scale: [0.055, 0.075, 0.03], rot: [0, -0.5, 0.4] });
   } else {                   // blueberry: round, crown calyx, bloom speckle, highlight
     it.push({ geo: sphere(), color: '#7d58f0', pos: [0, 0, 0], scale: [0.27, 0.26, 0.27] });
     for (let i = 0; i < 5; i++) { const a = i / 5 * 6.283; it.push({ geo: new THREE.ConeGeometry(0.08, 0.2, 4), color: '#8affd8', pos: [Math.sin(a) * 0.09, 0.25, Math.cos(a) * 0.075], rot: [Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3] }); }
@@ -246,7 +248,7 @@ export class Collectibles {
     const berries = [['#ff4d6d', '#ff2a4d', 'straw'], ['#9a6bff', '#6a3dd8', 'blue']];
     for (const [c, e, k] of berries) this.types.push({
       kind: 'berry', color: c, geo: berryGeo(k),
-      mat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, emissive: e, emissiveIntensity: 0.12 }), glow: new THREE.Color(e),
+      mat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, emissive: e, emissiveIntensity: 0.1 }), glow: new THREE.Color(e),
     });
     const CAP = 90; this.cap = CAP;
     this.types.forEach(ty => { ty.inst = new THREE.InstancedMesh(ty.geo, ty.mat, CAP); ty.inst.count = 0; ty.inst.frustumCulled = false; ty.inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(ty.inst); });
@@ -284,7 +286,7 @@ export class Collectibles {
         sc *= 1 + 0.15 * Math.sin(t * 20);
       } else { u.mag = 0; m.position.y = u.baseY + Math.sin(t * 2.6 + u.ph) * 0.14; }
       sc *= 1 + Math.sin(t * 3 + u.ph) * 0.04; m.scale.setScalar(sc);
-      if (d < 20 && Math.random() < 0.004) this.fx.twinkle(m.position.clone().add(new THREE.Vector3((Math.random() - .5) * 0.8, Math.random() * 0.6, (Math.random() - .5) * 0.8)), ty.color);
+      if (d < 24 && Math.random() < (ty.kind === 'gem' ? 0.016 : 0.006)) this.fx.twinkle(m.position.clone().add(new THREE.Vector3((Math.random() - .5) * 0.8, Math.random() * 0.6, (Math.random() - .5) * 0.8)), ty.color);
       if (d < 1.4) { collected = i; continue; }
     }
     if (collected !== null) {

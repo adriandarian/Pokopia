@@ -1,10 +1,21 @@
 // Relationship, wish, dialogue, event and decor content. Pure data (builders live in decor.js).
 
-// ---- friendship levels (points per species). Level 1 = "Friend" (the creature follows you). ----
-export const LEVEL_AT = [0, 16, 36, 65, 105, 165, 260];
+// ---- friendship levels. Points alone are not enough: deeper levels also need days visited and varied interactions. ----
+export const LEVEL_AT = [0, 22, 45, 75, 110, 155, 200];
+export const LEVEL_DAYS = [0, 1, 2, 3, 4, 5, 5];       // different days you spent time with them
+export const LEVEL_KINDS = [0, 2, 2, 3, 4, 4, 5];      // different kinds of interaction (gift, emote, wish, hangout, hello...)
 export const LEVEL_NAME = ['Shy', 'Friend', 'Buddy', 'Pal', 'Close pal', 'Dear friend', 'Best friend'];
 export const MAX_LEVEL = LEVEL_AT.length - 1;
-export const levelOf = (pts = 0) => LEVEL_AT.reduce((l, n, i) => (pts >= n ? i : l), 0);
+// mem = { days: [dates], kinds: {name:count} }
+export function levelOf(pts = 0, mem = null) {
+  let l = 0;
+  for (let i = 1; i <= MAX_LEVEL; i++) {
+    if (pts < LEVEL_AT[i]) break;
+    if (mem && ((mem.days || []).length < LEVEL_DAYS[i] || Object.keys(mem.kinds || {}).length < LEVEL_KINDS[i])) break;
+    l = i;
+  }
+  return l;
+}
 
 // ---- wishes: each friend asks for something small. type: gift (color key like 'berry:red'), hat, emote ----
 export const WISHES = {
@@ -29,6 +40,24 @@ export const LINES = {
   Pengu: [['Pweh? Hello...', 'Waddle waddle.'], ['Pweh! A new friend!', 'I slid here just for you.'], ['Pengu loves your company!', 'Let us waddle together!'], ['Best friend, best waddle!', 'Pweh pweh pweh!']],
   Fluff: [['...b-baa?', 'Oh, um, hello.'], ['Baa... you are nice.', 'I will stay close, okay?'], ['You make me feel fluffier.', 'I am not shy with you.'], ['You are my whole cloud, friend.', 'Baaa, baaa, I love you.']],
 };
+// Personality kit used to generate extra lines per tier (6+ lines per species per tier).
+const P = {
+  Puffle: { noise: 'Hop hop', pal: 'friend', quirk: 'bounce through the clover', fav: 'sunny meadows' },
+  Bloop: { noise: 'Bloop', pal: 'splashy pal', quirk: 'hum by the pond', fav: 'puddles' },
+  Sunny: { noise: 'Peep', pal: 'sunshine', quirk: 'chase warm spots', fav: 'the daylight' },
+  Mochi: { noise: 'Mrrow', pal: 'human', quirk: 'nap in a sunbeam', fav: 'soft cushions' },
+  Leafy: { noise: 'Rustle', pal: 'gardener', quirk: 'listen to the trees', fav: 'fresh rain' },
+  Bobo: { noise: 'Hmm', pal: 'pal', quirk: 'look for honey', fav: 'big hugs' },
+  Pengu: { noise: 'Pweh', pal: 'waddle-buddy', quirk: 'slide down hills', fav: 'cool breezes' },
+  Fluff: { noise: 'Baa', pal: 'friend', quirk: 'float like a cloud', fav: 'quiet corners' },
+};
+const T = [
+  (p) => [`${p.noise}... hello?`, `Oh! Are you looking at me?`, `I like to ${p.quirk}. Alone. Mostly.`, `Is that a gift? ...No? Okay.`, `Maybe I will say hi tomorrow.`, `${p.noise}. The island is big, huh.`],
+  (p) => [`${p.noise}! It is you, ${p.pal}!`, `I was just about to ${p.quirk}. Come along!`, `Do you like ${p.fav}? I love ${p.fav}.`, `You came back! That makes me happy.`, `Stay a little? There is no hurry.`, `${p.noise} ${p.noise}! Hello hello!`],
+  (p) => [`Today I ${p.quirk} and thought of you.`, `${p.fav[0].toUpperCase() + p.fav.slice(1)} are better with you around.`, `${p.noise}! Want to hang out for a bit?`, `I saved a nice spot, just for us.`, `You always know what I like. How?`, `Let us make today a good one, ${p.pal}.`],
+  (p) => [`You are my very best friend. ${p.noise}!`, `I could ${p.quirk} with you forever.`, `Remember when we met? I do. Every bit.`, `Whatever you do, ${p.pal}, I am proud of you.`, `The island feels like home because of you.`, `${p.noise}! Hugs? Hugs.`],
+];
+export function allLines(sp, tier) { const base = LINES[sp]?.[tier] || [], gen = T[tier](P[sp] || P.Puffle); return [...base, ...gen]; }
 export const tierOf = (lvl) => (lvl <= 0 ? 0 : lvl <= 2 ? 1 : lvl <= 4 ? 2 : 3);
 
 // ---- daily events keyed by day number. Always gentle bonuses, never scarcity. ----
@@ -46,26 +75,39 @@ export const GEM_VALUE = { pink: 1, blue: 1, green: 2, yellow: 3 };
 export const COMBO_BONUS = { 5: 3, 10: 6, 15: 10 }; // collecting gems within 2s of each other
 
 // ---- decor ----
-// charm = contribution to Island Charm. kind: 'solid' blocks neighbours, 'flat' can overlap.
+// cat: Furniture | Garden | Lights | Structures | Paths. charm = Island Charm. kind: 'solid' | 'flat' | 'kit' (modular house piece).
+// line:true pieces can be placed in a row by walking in Line mode. layer/elev are for kit pieces that stack.
+export const DECOR_CATS = [{ id: 'Furniture', icon: '🪑' }, { id: 'Garden', icon: '🌷' }, { id: 'Lights', icon: '🏮' }, { id: 'Structures', icon: '🏡' }, { id: 'Paths', icon: '🪨' }, { id: 'Build kit', icon: '🧱' }];
+const D = (id, name, icon, price, charm, cat, extra = {}) => ({ id, name, icon, price, charm, cat, kind: 'solid', ...extra });
 export const DECOR = [
-  { id: 'd_path', name: 'Stone Path', icon: '🪨', price: 10, charm: 1, kind: 'flat' },
-  { id: 'd_fence', name: 'Picket Fence', icon: '🚧', price: 15, charm: 1, kind: 'solid' },
-  { id: 'd_sign', name: 'Signpost', icon: '🪧', price: 30, charm: 1, kind: 'solid' },
-  { id: 'd_lantern', name: 'Lantern', icon: '🏮', price: 40, charm: 2, kind: 'solid' },
-  { id: 'd_flowerbed', name: 'Flower Bed', icon: '🌷', price: 50, charm: 3, kind: 'solid' },
-  { id: 'd_bench', name: 'Cosy Bench', icon: '🪑', price: 60, charm: 3, kind: 'solid' },
-  { id: 'd_sapling', name: 'Cherry Sapling', icon: '🌸', price: 70, charm: 4, kind: 'solid' },
-  { id: 'd_mushlamp', name: 'Mushroom Lamp', icon: '🍄', price: 80, charm: 4, kind: 'solid' },
-  { id: 'd_picnic', name: 'Picnic Blanket', icon: '🧺', price: 90, charm: 4, kind: 'flat' },
-  { id: 'd_fairy', name: 'Fairy Ring', icon: '🧚', price: 120, charm: 6, kind: 'flat' },
-  { id: 'd_bridge', name: 'Garden Bridge', icon: '🌉', price: 250, charm: 9, kind: 'solid' },
-  { id: 'd_well', name: 'Wishing Well', icon: '⛲', price: 300, charm: 10, kind: 'solid' },
-  { id: 'd_arch', name: 'Rainbow Arch', icon: '🌈', price: 400, charm: 14, kind: 'solid' },
-  { id: 'd_windmill', name: 'Windmill', icon: '🌬️', price: 650, charm: 20, kind: 'solid' },
-  { id: 'd_house', name: 'Little House', icon: '🏡', price: 900, charm: 30, kind: 'solid' },
+  D('d_path', 'Stone Path', '🪨', 10, 1, 'Paths', { kind: 'flat', line: true }),
+  D('d_stones', 'Stepping Stones', '🟤', 12, 1, 'Paths', { kind: 'flat', line: true }),
+  D('d_fence', 'Picket Fence', '🚧', 15, 1, 'Paths', { line: true }),
+  D('d_sign', 'Signpost', '🪧', 30, 1, 'Furniture'),
+  D('d_mailbox', 'Mailbox', '📮', 35, 2, 'Furniture'),
+  D('d_lantern', 'Lantern', '🏮', 40, 2, 'Lights'),
+  D('d_flowerbed', 'Flower Bed', '🌷', 50, 3, 'Garden'),
+  D('d_bench', 'Cosy Bench', '🪑', 60, 3, 'Furniture'),
+  D('d_table', 'Tea Table', '☕', 75, 4, 'Furniture'),
+  D('d_sapling', 'Cherry Sapling', '🌸', 70, 4, 'Garden'),
+  D('d_hedge', 'Round Hedge', '🌳', 45, 2, 'Garden', { line: true }),
+  D('d_mushlamp', 'Mushroom Lamp', '🍄', 80, 4, 'Lights'),
+  D('d_lamppost', 'Lamp Post', '💡', 95, 4, 'Lights'),
+  D('d_picnic', 'Picnic Blanket', '🧺', 90, 4, 'Furniture', { kind: 'flat' }),
+  D('d_fairy', 'Fairy Ring', '🧚', 120, 6, 'Garden', { kind: 'flat' }),
+  D('d_bridge', 'Garden Bridge', '🌉', 250, 9, 'Structures'),
+  D('d_well', 'Wishing Well', '⛲', 300, 10, 'Structures'),
+  D('d_gazebo', 'Gazebo', '⛺', 380, 13, 'Structures'),
+  D('d_arch', 'Rainbow Arch', '🌈', 400, 14, 'Structures'),
+  D('d_windmill', 'Windmill', '🌬️', 650, 20, 'Structures'),
+  D('d_house', 'Little House', '🏡', 900, 30, 'Structures'),
+  D('b_floor', 'Wood Floor', '🟫', 25, 1, 'Build kit', { kind: 'kit', layer: 0, elev: 0, line: true }),
+  D('b_wall', 'Cottage Wall', '🧱', 30, 2, 'Build kit', { kind: 'kit', layer: 1, elev: 0 }),
+  D('b_door', 'Doorway', '🚪', 40, 3, 'Build kit', { kind: 'kit', layer: 1, elev: 0 }),
+  D('b_roof', 'Roof Piece', '🔺', 55, 3, 'Build kit', { kind: 'kit', layer: 2, elev: 2.0 }),
 ];
 export const PLUSH_COLORS = { Puffle: '#ffa9cf', Bloop: '#86dcff', Sunny: '#ffe36e', Mochi: '#c9a9ff', Leafy: '#a6e585', Bobo: '#ffb766', Pengu: '#5fc4cf', Fluff: '#fff7fb' };
-for (const sp of Object.keys(PLUSH_COLORS)) DECOR.push({ id: 'd_plush_' + sp, name: `${sp} Plushie`, icon: '🧸', price: 0, charm: 5, kind: 'solid', gift: `${sp} best friends`, species: sp });
+for (const sp of Object.keys(PLUSH_COLORS)) DECOR.push({ id: 'd_plush_' + sp, name: `${sp} Plushie`, icon: '🧸', price: 0, charm: 5, cat: 'Furniture', kind: 'solid', gift: `${sp} best friends`, species: sp });
 export const DECOR_BY_ID = Object.fromEntries(DECOR.map(d => [d.id, d]));
 
 // Island Charm milestones (total charm of placed decor).

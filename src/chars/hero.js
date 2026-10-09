@@ -43,6 +43,11 @@ function hairOutline(mesh, layer, thick) {
   const o = new THREE.Mesh(mesh.geometry, m); o.userData.isOutline = true; mesh.add(o); return o;
 }
 
+let _sb; export function softBlob() {
+  if (_sb) return _sb; const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(32, 32, 2, 32, 32, 31); gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); _sb = new THREE.CanvasTexture(c); return _sb;
+}
 // Chibi hero with outfit hooks. Returns a Group; group.userData.hero is the animation/outfit API.
 export function buildHero(opts = {}) {
   const root = new THREE.Group();
@@ -65,6 +70,8 @@ export function buildHero(opts = {}) {
     const foot = new THREE.Group(); foot.position.y = -0.29; knee.add(foot);
     part(foot, S(), mats.shoe, { pos: [0, -0.06, 0.07], scale: [0.2, 0.13, 0.29] });
     part(foot, S(), mats.shoe, { pos: [0, -0.05, 0.26], scale: [0.165, 0.1, 0.14], line: 0.02 });
+    part(foot, new THREE.TorusGeometry(0.1, 0.022, 6, 14, Math.PI), toon('#ff6b6b', { rim: 0 }), { pos: [0, 0.0, 0.2], rot: [0.5, 0, 0], scale: [1, 1, 1], line: 0 });
+    for (const k of [0, 1, 2]) part(foot, S(), toon('#c9b79e', { rim: 0 }), { pos: [0, 0.02 - k * 0.0, 0.05 + k * 0.08], scale: [0.09, 0.02, 0.02], line: 0 });
     part(foot, S(), mats.sole, { pos: [0, -0.16, 0.09], scale: [0.205, 0.035, 0.32], line: 0 });
     g.userData = { knee, foot }; return g;
   });
@@ -78,6 +85,9 @@ export function buildHero(opts = {}) {
   part(torso, new THREE.CylinderGeometry(0.372, 0.385, 0.07, 24), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, 0.0, 0], scale: [1, 1, 0.92], line: 0 });
   part(torso, new THREE.CylinderGeometry(0.385, 0.4, 0.045, 24), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, -0.1, 0], scale: [1, 1, 0.92], line: 0 });
   part(torso, S(), toon('#fff4e0', { fuzz: 0.1, rim: 0.1 }), { pos: [0.17, 0.08, 0.31], scale: [0.1, 0.085, 0.03], rot: [-0.15, 0.2, 0], line: 0.012 });
+  part(torso, new THREE.CylinderGeometry(0.4, 0.41, 0.07, 24), toon('#7a4f2a', { fuzz: 0.1 }), { pos: [0, -0.34, 0], scale: [1, 1, 0.9], line: 0.012 });
+  part(torso, S(), toon('#ffd54a', { rim: 0.3 }), { pos: [0, -0.34, 0.37], scale: [0.06, 0.05, 0.02], line: 0.01 });
+  for (const sx of [-1, 1]) part(torso, S(), toon('#d9524e', { fuzz: 0.1, rim: 0 }), { pos: [sx * 0.3, -0.14, 0.23], scale: [0.04, 0.16, 0.06], rot: [0, 0, sx * 0.4], line: 0 });
   const pack = new THREE.Group(); torso.add(pack);
   const flapM = toonUnique('#d98a2b', { fuzz: 0.12 }); mats.packFlap = flapM;
   part(pack, new THREE.CapsuleGeometry(0.22, 0.1, 8, 14), mats.pack, { pos: [0, -0.02, -0.4], scale: [1, 1, 0.72] });
@@ -89,6 +99,7 @@ export function buildHero(opts = {}) {
   const arms = [-1, 1].map(sx => {
     const g = new THREE.Group(); g.position.set(sx * 0.47, 0.25, 0); torso.add(g);
     part(g, new THREE.CapsuleGeometry(0.12, 0.15, 6, 10), mats.shirt, { pos: [0, -0.14, 0] });
+    part(g, new THREE.TorusGeometry(0.115, 0.032, 6, 14), toon('#fff4e0', { fuzz: 0.1 }), { pos: [0, -0.255, 0], rot: [Math.PI / 2, 0, 0], line: 0.012 });
     const elbow = new THREE.Group(); elbow.position.y = -0.3; g.add(elbow);
     part(elbow, new THREE.CapsuleGeometry(0.095, 0.14, 6, 10), mats.skin, { pos: [0, -0.12, 0] });
     const hand = new THREE.Group(); hand.position.y = -0.34; elbow.add(hand);
@@ -99,7 +110,7 @@ export function buildHero(opts = {}) {
   });
 
   // ---- head ----
-  const head = new THREE.Group(); head.position.set(0, 1.4, 0); rig.add(head);
+  const head = new THREE.Group(); head.position.set(0, 1.37, 0); head.scale.setScalar(0.92); rig.add(head);
   const headC = [0, 0.52, 0], HR = 0.62, HRX = HR * 1.04;
   part(head, S(), mats.skin, { pos: headC, scale: [HRX, HR, HR] });
   // ears: half-sunk discs on the skull with an inner shell
@@ -135,10 +146,16 @@ export function buildHero(opts = {}) {
     n.rotation.order = 'YXZ'; n.rotation.set(0.35, sx * 2.5, 0);
   }
   // nape: one soft wide piece + two small curls
-  part(hair, S(), mats.hair, { pos: onHair(Math.PI, -0.3, 0.97), scale: [0.38, 0.15, 0.15], line: 0.022 });
+  part(hair, S(), mats.hair, { pos: onHair(Math.PI, -0.1, 0.99), scale: [0.26, 0.12, 0.1], line: 0.022 });
   for (const sx of [-1, 1]) part(hair, S(), mats.hair, { pos: onHair(Math.PI + sx * 0.8, -0.3, 0.98), scale: [0.15, 0.17, 0.13], line: 0.02 });
   // upper layer shell: slightly rotated so a ridge shows (breaks the helmet look)
   { const s2 = new THREE.Mesh(hairShell(), mats.hairShell2); s2.scale.set(HRX * 1.13, HR * 1.12, HR * 1.14); s2.position.set(0, 0.57, -0.06); s2.rotation.set(-0.12, 0.35, 0); s2.castShadow = true; s2.userData.noBake = true; hair.add(s2); hairOutline(s2, 0.15, 0.025 / 1.1); }
+  // crown tufts: layered locks sweeping back from a parting so the top reads as styled hair from above
+  for (const [az, el, len, w, yaw] of [[0.5, 1.15, 0.8, 1.2, 0.5], [-0.55, 1.12, 0.85, 1.25, -0.5], [0.0, 1.25, 0.7, 1.1, 0.0], [1.4, 1.0, 0.7, 1.0, 1.4], [-1.4, 1.0, 0.7, 1.0, -1.4], [3.0, 1.0, 0.8, 1.2, 3.1]]) {
+    const m = part(hair, lockGeo, mats.hair, { pos: onHair(az, el, 1.02), scale: [1.05 * w, len * 1.1, 0.8 * w], line: 0.018 });
+    m.rotation.order = 'YXZ'; m.rotation.set(az > 2 ? 0.9 : -0.9, yaw, 0);
+  }
+  part(hair, S(), toon('#945a31', { rim: 0.4, rimColor: '#ffe2b0', fuzz: 0, fill: 0.15 }), { pos: onHair(0.15, 0.88, 1.01), scale: [0.16, 0.025, 0.07], rot: [-0.5, 0.2, 0.15], line: 0 });
   const ahoge = new THREE.Group(); ahoge.position.set(0.05, 1.12, 0.1); hair.add(ahoge);
   part(ahoge, new THREE.CapsuleGeometry(0.035, 0.22, 4, 8), mats.hair, { pos: [0, 0.12, 0], rot: [0, 0, -0.35], line: 0.02 });
   part(ahoge, S(), mats.hair, { pos: [-0.07, 0.3, 0], scale: [0.07, 0.07, 0.07], line: 0.015 });
@@ -232,15 +249,15 @@ export function buildHero(opts = {}) {
   for (const k in hats) { hats[k].visible = false; hatRoot.add(hats[k]); }
 
   // blob shadow
-  const blob = new THREE.Mesh(new THREE.CircleGeometry(0.62, 20).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: '#1d2b12', transparent: true, opacity: 0.28, depthWrite: false }));
+  const blob = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: '#10200a', map: softBlob(), transparent: true, opacity: 0.5, depthWrite: false }));
   blob.position.y = 0.06; blob.renderOrder = 1; root.add(blob);
   root.traverse(o => { if (o.isMesh && !o.userData.isOutline) o.castShadow = true; });
   const bk = bake(root);
 
   // ------- animation state -------
   const blinker = new Blinker(face);
-  const st = { phase: 0, sy: 1, svy: 0, t: 0, lean: 0, wasGround: true, idle: 0, wave: 0, foot: 0, headYaw: 0, crouch: 0, hatX: 0, hatZ: 0, hatVx: 0, hatVz: 0, ahX: 0, ahZ: 0, prevHX: 0, prevHY: 0, sway: 0, bob: 0, turn: 0, prevVy: 0, landRec: 0 };
+  const st = { tapT: 0, tapCD: 5, glT: 0, glCD: 4, glYaw: 0, phase: 0, sy: 1, svy: 0, t: 0, lean: 0, wasGround: true, idle: 0, wave: 0, foot: 0, headYaw: 0, crouch: 0, hatX: 0, hatZ: 0, hatVx: 0, hatVz: 0, ahX: 0, ahZ: 0, prevHX: 0, prevHY: 0, sway: 0, bob: 0, turn: 0, prevVy: 0, landRec: 0 };
   let curHat = 'none';
   const hero = {
     root, mats, hats, head, torso, arms, legs, face, faceAnchor,
@@ -283,7 +300,7 @@ export function buildHero(opts = {}) {
       // weight: bounce + hip sway + torso side-shift over the planted foot
       const bounce = air ? 0 : Math.abs(sw) * 0.09 * amp;
       st.sway = damp(st.sway, air ? 0 : sw * 0.05 * amp, 20, dt);
-      torso.position.y = 1.06 + bounce * 0.5 - st.crouch * 0.1 - st.landRec * 0.1; head.position.y = 1.4 + bounce - st.crouch * 0.14 - st.landRec * 0.12;
+      torso.position.y = 1.06 + bounce * 0.5 - st.crouch * 0.1 - st.landRec * 0.1; head.position.y = 1.37 + bounce - st.crouch * 0.14 - st.landRec * 0.12;
       torso.position.x = st.sway; head.position.x = -st.sway * 0.5;
       const f = Math.sign(sw);
       if (!air && mv > 0.3 && f !== st.foot) { st.foot = f; s.onFoot && s.onFoot(f, run); } else if (mv <= 0.3) st.foot = 0;
@@ -325,7 +342,14 @@ export function buildHero(opts = {}) {
       torso.rotation.x = st.lean; torso.rotation.z = sw * 0.05 * amp - THREE.MathUtils.clamp(st.turn * 0.035, -0.3, 0.3) * (0.4 + mv);
       torso.scale.set(1, 1 + Math.sin(t * 2.2) * 0.015 * (1 - mv), 1);
       head.rotation.x = -st.lean * 0.6 + (air ? (s.vy > 0 ? -0.15 : 0.1) : 0) + st.crouch * 0.1;
-      const lookT = mv < 0.1 ? Math.sin(t * 0.6) * 0.3 + Math.sin(t * 1.7) * 0.1 : 0;
+      if (mv < 0.1 && !air && !st.em) {
+        st.tapCD -= dt; st.glCD -= dt;
+        if (st.tapCD <= 0 && st.tapT <= 0) { st.tapT = 1.6; st.tapCD = 8 + Math.random() * 6; }
+        if (st.glCD <= 0 && st.glT <= 0) { st.glT = 1.4; st.glYaw = (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.5); st.glCD = 5 + Math.random() * 6; }
+      } else { st.tapT = 0; st.glT = 0; }
+      st.tapT = Math.max(0, st.tapT - dt); st.glT = Math.max(0, st.glT - dt);
+      const lookT = mv < 0.1 ? (st.glT > 0 ? st.glYaw * Math.sin(Math.min(1, (1.4 - st.glT) / 0.3) * Math.PI / 2) : Math.sin(t * 0.6) * 0.3 + Math.sin(t * 1.7) * 0.1) : 0;
+      if (st.tapT > 0) { const tp = Math.max(0, Math.sin(t * 14)); legs[1].rotation.x = -0.25 * tp; legs[1].userData.knee.rotation.x = 0.5 * tp; st.hatVx += tp * 0.02; head.position.y += tp * 0.015; }
       st.headYaw = lerp(st.headYaw, lookT + THREE.MathUtils.clamp(st.turn * 0.04, -0.4, 0.4), Math.min(1, dt * 5));
       head.rotation.y = st.headYaw; head.rotation.z = mv < 0.1 ? Math.sin(t * 1.1) * 0.05 : -sw * 0.03 * amp - THREE.MathUtils.clamp(st.turn * 0.02, -0.15, 0.15);
       // secondary motion: hat / ahoge are springs lagging the head's motion
@@ -394,7 +418,7 @@ export function buildHero(opts = {}) {
       if (st.em && st.em.name === 'sit') for (const l of legs) l.position.y = 0.8 + drop;
       blinker.update(dt, s.happy || happyForce);
       const h = s.heightAboveGround || 0;
-      blob.position.y = 0.06 - h + (s.groundDelta || 0); blob.scale.setScalar(Math.max(0.35, 1 - h * 0.12)); blob.material.opacity = 0.28 * Math.max(0.3, 1 - h * 0.1);
+      blob.position.y = 0.06 - h + (s.groundDelta || 0); blob.scale.setScalar(Math.max(0.35, 1 - h * 0.12)); blob.material.opacity = 0.5 * Math.max(0.3, 1 - h * 0.1);
     },
   };
   root.userData.hero = hero; hero.bake = bk;

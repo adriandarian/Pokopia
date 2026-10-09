@@ -11,7 +11,7 @@ const GradeShader = {
     tDiffuse: { value: null },
     tint: { value: new THREE.Color(1, 1, 1) },
     vignette: { value: 0.32 },
-    sat: { value: 1.2 },
+    sat: { value: 1.04 },
     contrast: { value: 1.12 },
     lift: { value: 0 },
   },
@@ -21,6 +21,7 @@ const GradeShader = {
       vec4 c=texture2D(tDiffuse,vUv);
       vec3 col=c.rgb*tint;
       float l=dot(col,vec3(.2126,.7152,.0722));
+      float gm=smoothstep(0.,.25,col.g-max(col.r,col.b)); col=mix(col,vec3(l)*vec3(1.02,1.,.96),gm*.26); // calm the greens
       col=mix(vec3(l),col,sat*(1.+.15*(1.-clamp(l*3.,0.,1.))));
       col=.18*pow(max(col,0.)/.18,vec3(contrast)); // S-curve: deeper darks, punchier brights
       col*=mix(vec3(.96,.985,1.05),vec3(1.05,1.01,.94),smoothstep(.04,.8,l)); // cool shadows, warm highlights
@@ -57,6 +58,7 @@ export function setupPost(renderer, scene, camera) {
         bloom.strength = s.bloom;
         grade.uniforms.tint.value.copy(s.tint);
         grade.uniforms.lift.value = 0.02 * (s.night || 0);
+        grade.uniforms.sat.value = 1.05 - 0.1 * (s.dusk || 0);
         grade.uniforms.contrast.value = 1.12 - 0.07 * (s.night || 0);
       }
       composer.render(dt);

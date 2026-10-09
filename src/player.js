@@ -15,7 +15,7 @@ export class Player {
     this.hero = this.mesh.userData.hero;
     this.fx = getFX(scene);
     this.camera = camera; this.vel = new THREE.Vector3(); this.onGround = true;
-    this.keys = {}; this.yaw = 0; this.pitch = 0.64; this.dist = 9.2; this.t = 0;
+    this.keys = {}; this.yaw = 0; this.pitch = 0.52; this.dist = 8.6; this.t = 0;
     this.speed = 0; this.moveDir = new THREE.Vector3(); this.coyote = 0; this.jumpBuf = 0; this.fov = camera.fov; this.baseFov = camera.fov;
     this.camDist = this.dist; this.lookAt = new THREE.Vector3(); this.camInit = false; this.vyPrev = 0;
     this.mesh.position.set(0, heightAt(0, 0), 0);
@@ -46,7 +46,7 @@ export class Player {
       moving = dir.lengthSq() > 0;
       this._yr = (this._yr || 0) * 0.85;
       if (moving) {
-        dir.normalize().applyAxisAngle(UP, this.yaw); this.moveDir.copy(dir);
+        dir.normalize().applyAxisAngle(UP, this.yaw + (this._offS || 0)); this.moveDir.copy(dir);
         const target = Math.atan2(dir.x, dir.z);
         let d = target - this.mesh.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d));
         const dy = d * (1 - Math.exp(-16 * dt)); this.mesh.rotation.y += dy; this._yr = dy / Math.max(dt, 1e-3);
@@ -99,26 +99,38 @@ export class Player {
     if (this.frozen) return; // QA mode: camera is placed by window.__game.setCam
 
     // ---- camera: smooth follow, terrain collision, FOV kick ----
-    const cp = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
     const pivot = new THREE.Vector3(p.x, damp(this._py ?? p.y, p.y, 6, dt) + 2.1, p.z); this._py = pivot.y - 2.1;
-    let limit = this.dist;
-    for (let s = 1; s <= 12; s++) {
-      const d = this.dist * s / 12, x = pivot.x + cp.x * d, z = pivot.z + cp.z * d, y = pivot.y + cp.y * d;
-      if (y < groundAt(x, z) + 0.9) { limit = Math.max(2.2, this.dist * (s - 1) / 12); break; }
-    }
-    // props between hero and camera: world.obstacles = [{x,z,r,top}] (trunks/bushes/rocks, optional, set by the nature builder) pull the camera in
-    const obs = world.obstacles;
-    if (obs && obs.length) {
-      const ex = cp.x, ez = cp.z, el = Math.hypot(ex, ez) || 1;
-      for (const o of obs) {
-        const rx = o.x - pivot.x, rz = o.z - pivot.z, t = (rx * ex + rz * ez) / el;          // distance along the ray's ground projection
-        if (t < 1.2 || t > this.dist * Math.cos(this.pitch)) continue;
-        const dx = rx - (ex / el) * t, dz = rz - (ez / el) * t; if (dx * dx + dz * dz > o.r * o.r) continue;
-        const rayY = pivot.y + cp.y / Math.max(1e-3, Math.hypot(cp.x, cp.z)) * t; if (rayY > (o.top ?? 99)) continue;
-        limit = Math.max(2.4, Math.min(limit, (t - o.r) / Math.max(0.2, Math.cos(this.pitch))));
+    // occlusion: how far can the camera go along (yaw + off, pitch) before terrain or a prop gets in the way?
+    const obs = world.obstacles, cosP = Math.cos(this.pitch), sinP = Math.sin(this.pitch);
+    const reach = (off) => {
+      const ya = this.yaw + off, ex = Math.sin(ya), ez = Math.cos(ya);
+      let limit = this.dist;
+      for (let s = 1; s <= 12; s++) {
+        const d = this.dist * s / 12, x = pivot.x + ex * cosP * d, z = pivot.z + ez * cosP * d, y = pivot.y + sinP * d;
+        if (y < groundAt(x, z) + 0.9) { limit = Math.max(3.2, this.dist * (s - 1) / 12); break; }
       }
-    }
-    this.camDist = limit < this.camDist ? damp(this.camDist, limit, 14, dt) : damp(this.camDist, limit, 2.5, dt);
+      if (obs && obs.length) for (const o of obs) {
+        const rx = o.x - pivot.x, rz = o.z - pivot.z, t = rx * ex + rz * ez;
+        if (t < 1.0 || t > this.dist * cosP + o.r) continue;
+        const dx = rx - ex * t, dz = rz - ez * t, rr = o.r + 0.5; if (dx * dx + dz * dz > rr * rr) continue;
+        if (pivot.y + sinP / cosP * t > (o.top ?? 99) + 0.4) continue;
+        limit = Math.min(limit, Math.max(3.2, (t - o.r - 0.4) / cosP));
+      }
+      return limit;
+    };
+    // keep the current lateral offset while it is clear; otherwise orbit to the nearest clear angle (pitch stays put)
+    const clearAt = this.dist * 0.97;
+    let off = this._off ?? 0;
+    if (reach(off) < clearAt) {
+      let best = off, bl = reach(off);
+      for (const m of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05]) { const l = reach(m); if (l >= clearAt) { best = m; bl = l; break; } if (l > bl + 0.3) { best = m; bl = l; } }
+      off = best;
+    } else if (off !== 0 && reach(0) >= clearAt) off = 0;   // original angle is free again
+    this._off = off; this._offS = damp(this._offS ?? 0, off, 2.6, dt);
+    const lim = reach(this._offS), ya = this.yaw + this._offS;
+    const cp = new THREE.Vector3(Math.sin(ya) * cosP, sinP, Math.cos(ya) * cosP);
+    const limit = lim;
+    this.camDist = limit < this.camDist ? damp(this.camDist, limit, 6, dt) : damp(this.camDist, limit, 2.5, dt);
     const desired = pivot.clone().addScaledVector(cp, this.camDist);
     desired.y = Math.max(desired.y, groundAt(desired.x, desired.z) + 0.8);
     if (!this.camInit) { this.camera.position.copy(desired); this.lookAt.copy(pivot); this.camInit = true; }

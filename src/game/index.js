@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { state, load, save, saveSoon, addPetals, todayStr } from './state.js';
 import { BY_ID, SPECIES, BERRY_COLORS, GEM_COLORS, COLOR_ICON, MILESTONES, WARDROBE, featuredSpecies } from './data.js';
-import { GEM_VALUE, COMBO_BONUS, DECOR_BY_ID, LEVEL_NAME, levelOf, eventFor } from './content.js';
+import { GEM_VALUE, COMBO_BONUS, DECOR_BY_ID, LEVEL_NAME, eventFor } from './content.js';
+import { heightAt, WORLD } from '../terrain.js';
 import { on, emit } from './events.js';
 import { initQuests } from './quests.js';
 import { initCosmetics, tickTrail } from './cosmetics.js';
@@ -13,7 +14,7 @@ import { initUI, setPrompt } from '../ui/ui.js';
 import { initTouch } from './touch.js';
 import { initEmotes } from './emotes.js';
 import { startGuide, updateGuide } from './guide.js';
-import { initFriends, tickFriends, onGift, speciesOf, lvlOf } from './friends.js';
+import { initFriends, tickFriends, onGift, speciesOf, lvlOf, grandfather } from './friends.js';
 import { initDecor, tickDecor, isPlacing, confirmPlacing, rotatePlacing, cancelPlacing, storeMoving, nearestDecor, moveDecor } from './decor.js';
 import { initDays, tickDays, todayEvent } from './days.js';
 import { getFX } from '../chars/fx.js';
@@ -28,7 +29,7 @@ export function initGame(api) {
   const fx = getFX(window.__game?.scene);
   const summary = () => ({
     discovered: SPECIES.filter(s => state.discovered[s.id]).length, friends: SPECIES.filter(s => state.befriended[s.id]).length,
-    gems: state.totalGems, maxBond: Math.max(0, ...Object.values(state.rel).map(levelOf)),
+    gems: state.totalGems, maxBond: Math.max(0, ...SPECIES.map(x => lvlOf(x.id))),
   });
   function checkMilestones() {
     const s = summary();
@@ -57,7 +58,7 @@ export function initGame(api) {
     if (state.befriended[e.species]) { e.repeat = true; return; }
     state.befriended[e.species] = Date.now(); state.discovered[e.species] ||= Date.now(); addPetals(5); saveSoon(); checkMilestones();
   });
-  on('befriend', e => { state.rel[e.species] = Math.max(state.rel[e.species] || 0, 16); if (e.species === featuredSpecies(state.day).id) addPetals(5); });
+  on('befriend', e => { grandfather(e.species); if (e.species === featuredSpecies(state.day).id) addPetals(5); });
   initQuests();
   if (api.player?.mesh) { initCosmetics(api.player); initEmotes(api.player); initDecor(api.player); }
   initUI({ initAudio });
@@ -68,6 +69,7 @@ export function initGame(api) {
   // ---- restore friends from the save (no burst / no event) ----
   const friended = new WeakSet(), met = new WeakSet();
   for (const sp of Object.keys(state.befriended)) {
+    grandfather(sp);
     const c = api.creatures.list.find(x => speciesOf(x) === sp); if (!c) continue;
     if (c.setFriend) c.setFriend(true, { silent: true }); else { c.friend = true; c.affinity = 3; }
     friended.add(c); met.add(c); c._release = true;
@@ -87,8 +89,33 @@ export function initGame(api) {
     const now = performance.now(); combo = now - lastPick < 2000 ? combo + 1 : 1; lastPick = now;
     if (COMBO_BONUS[combo]) { extra += COMBO_BONUS[combo]; emit('toast', { icon: '🔥', text: `Collecting streak x${combo}! +${COMBO_BONUS[combo]} 🌸`, kind: 'win' }); }
     if (extra) gemPay(extra);
+    for (const it of [...revealed]) if (!api.collect.items.includes(it)) { revealed.delete(it); hidden.delete(it); addPetals(5); emit('toast', { icon: '💎', text: 'Hidden gem found! +5 🌸', kind: 'win' }); }
     saveSoon(); emit('pickup', { kind: k, colorName }); emit('inventory');
   };
+
+  // ---- gems: gentle regrow (slower while many are uncollected) + hidden gems on hilltops/shores found with Sparkle Sense ----
+  const hidden = new Set(), revealed = new Set(), spawnOrig = api.collect.spawn.bind(api.collect);
+  function addHidden() {
+    for (let k = 0; k < 80; k++) {
+      const x = (Math.random() - 0.5) * WORLD * 0.8, z = (Math.random() - 0.5) * WORLD * 0.8, h = heightAt(x, z);
+      if (!(h > 7.5 || (h > 0.95 && h < 1.35))) continue;
+      spawnOrig(true); const it = api.collect.items.pop();   // keep it out of the world until Sparkle Sense reveals it
+      it.position.set(x, h + 1.1, z); it.userData.baseY = h + 1.1; hidden.add(it); return;
+    }
+    spawnOrig(false);
+  }
+  for (let i = 0; i < 6; i++) addHidden();
+  api.collect.spawn = (initial) => {
+    if (initial) return spawnOrig(true);
+    const n = api.collect.items.length, delay = 6000 + n * 450 + Math.random() * 5000;
+    setTimeout(() => { if (api.collect.items.length < 62) { if (Math.random() < 0.2) addHidden(); else spawnOrig(false); } }, delay);
+  };
+  on('emote', e => {
+    if (e.name !== 'sense') return;
+    let n = 0; for (const it of hidden) { if (!api.collect.items.includes(it)) api.collect.items.push(it); revealed.add(it); n++; for (let i = 0; i < 4; i++) fx.twinkle(it.position.clone().add(new THREE.Vector3((Math.random() - .5), Math.random() * 1.5, (Math.random() - .5))), '#fff3a0'); }
+    emit('toast', { icon: '👁️', text: n ? `Sparkle Sense! ${n} hidden gem${n > 1 ? 's' : ''} glimmer on hilltops and shores.` : 'Sparkle Sense: no hidden gems right now. They regrow slowly.', kind: 'good' });
+    setTimeout(() => { for (const it of revealed) { const i = api.collect.items.indexOf(it); if (i >= 0) { api.collect.items.splice(i, 1); it.userData.mag = 0; } } revealed.clear(); }, 16000);
+  });
 
   // ---- gifts ----
   const favKeys = sp => [`berry:${sp.fav.berry}`, `gem:${sp.fav.gem}`];

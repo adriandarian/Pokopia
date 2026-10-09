@@ -1,17 +1,19 @@
 // First-run guided objective with a floating arrow that points at the next thing to do.
 import * as THREE from 'three';
+import { heightAt } from '../terrain.js';
 import { state, saveSoon } from './state.js';
 import { on, emit } from './events.js';
 import { WARDROBE, SPECIES } from './data.js';
 import { eventFor } from './content.js';
-import { activeWishText } from './friends.js';
+import { activeWishText, hangSpot } from './friends.js';
+import { isTouchDevice } from './touch.js';
 
 const v = new THREE.Vector3();
 let objEl, arrowEl, api;
 const STEPS = [
   { text: 'Collect your first gem!', sub: 'Walk into a sparkly gem. Gems turn into petals 🌸', target: 'gem' },
   { text: 'You earned petals 🌸!', sub: 'Spend them in the wardrobe 👒. Now find a creature and say hi!', target: 'creature' },
-  { text: 'Make a friend!', sub: 'Pick up berries 🍓, then press E (or tap Give) next to a creature. Favourites help most. Friendship grows over a few gifts, hellos and emotes.', target: 'berry' },
+  { text: 'Make a friend!', get sub() { return `Pick up berries 🍓, then ${isTouchDevice() ? 'tap Give' : 'press E'} next to a creature. Favourites help most. Friendship grows slowly, over several days.`; }, target: 'berry' },
 ];
 export function startGuide(a) {
   api = a;
@@ -36,7 +38,7 @@ function suggestions() {
   const L = [], n = k => Object.entries(state.inv).filter(([x]) => x.startsWith(k + ':')).reduce((a, [, v]) => a + v, 0);
   if (state.quests?.some(q => q.done && !q.claimed)) L.push(['⭐ Quest reward ready!', 'Open the quest list and claim your petals.']);
   const w = activeWishText(); if (w) L.push([`🌟 ${w.sp} has a wish`, w.text]);
-  if (n('berry') + n('gem') > 0) L.push(['🎁 You have gifts to give', 'Walk up to a creature and press Give. Everyone has favourites!']);
+  if (n('berry') + n('gem') > 0) L.push(['🎁 You have gifts to give', 'Walk up to a creature and ' + (isTouchDevice() ? 'tap Give' : 'press E') + '. Everyone has favourites!']);
   const aff = WARDROBE.filter(x => !state.owned.includes(x.id) && !x.gift && x.price <= state.petals).sort((a, b) => b.price - a.price)[0];
   if (aff) L.push([`👒 You can afford ${aff.icon} ${aff.name}!`, 'Try it on in the wardrobe.']);
   const dinv = Object.values(state.decorInv || {}).reduce((a, b) => a + b, 0);
@@ -71,10 +73,12 @@ function nearest(list, pos, pred) {
 }
 export function updateGuide() {
   if (!arrowEl) return;
-  const s = STEPS[state.tutorial];
+  const hs = hangSpot();
+  const s = STEPS[state.tutorial] || (hs ? { target: 'hang' } : null);
   if (!s || document.getElementById('overlay') || !document.body.classList.contains('playing')) { arrowEl.classList.add('hidden'); return; }
   const pp = api.player.mesh.position; let tgt = null;
   if (s.target === 'gem') tgt = nearest(api.collect.items, pp, g => g.userData.ty.kind === 'gem');
+  else if (s.target === 'hang') tgt = { pos: new THREE.Vector3(hs.x, heightAt(hs.x, hs.z), hs.z), d: Math.hypot(hs.x - pp.x, hs.z - pp.z) };
   else if (s.target === 'creature') tgt = nearest(api.creatures.list, pp, c => !c.friend);
   else if (s.target === 'berry') tgt = (state.inv && Object.keys(state.inv).some(k => k.startsWith('berry:') && state.inv[k] > 0)) ? nearest(api.creatures.list, pp, c => !c.friend) : nearest(api.collect.items, pp, g => g.userData.ty.kind === 'berry');
   if (!tgt || tgt.d < 2.2) { arrowEl.classList.add('hidden'); return; }

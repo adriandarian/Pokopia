@@ -33,7 +33,7 @@ const whiskers = (g, color, x, y, z) => {
 
 // Each builder returns { ears, tail, wings, leaves, arms, jaw, extra, face, top, mood } where the pivots animate.
 export const SPECIES = [
-  { name: 'Puffle', color: '#ff9cc8', idles: { eat: 3, sleep: 1, look: 2, dance: 1, stretch: 1 }, build(g) { // pink bunny
+  { name: 'Puffle', sig: 'twitch', color: '#ff9cc8', idles: { eat: 3, sleep: 1, look: 2, dance: 1, stretch: 1 }, build(g) { // pink bunny
     const c = '#ff9cc8', dk = '#f57fb2', R = [0.64, 0.6, 0.6];
     E(g, c, [0, 0.64, 0], R);
     // real muzzle: two cheek puffs + chin + nose + buck teeth
@@ -54,7 +54,7 @@ export const SPECIES = [
     const face = addFace(g, R, [0, 0.64, 0], { ex: 0.38, ey: 0.14, size: 0.1, mouthAt: [0, 0.455, 0.672], mouthKind: 'w', msize: 0.08, cheek: '#ff7aa8' });
     return { ears, tail, wings: [], leaves: [], arms: ar, face, top: 1.9 };
   } },
-  { name: 'Bloop', color: '#4fc3f7', idles: { dance: 3, look: 2, stretch: 2, sleep: 1, eat: 1 }, build(g) { // blue gel droplet (opaque, glossy)
+  { name: 'Bloop', sig: 'wobble', color: '#4fc3f7', idles: { dance: 3, look: 2, stretch: 2, sleep: 1, eat: 1 }, build(g) { // blue gel droplet (opaque, glossy)
     const c = '#49bdf2', R = [0.72, 0.6, 0.66], G = GLOSS;
     E(g, c, [0, 0.58, 0], R, { mat: G });
     E(g, c, [0, 1.12, 0], [0.4, 0.4, 0.38], { mat: G });
@@ -69,7 +69,7 @@ export const SPECIES = [
     const ar = arms(g, c, { x: 0.7, y: 0.55, z: 0.1, len: 0.12, w: 0.11 }); ar.forEach(a => a.g.children.forEach(m => { m.material = toon(c, G); }));
     return { ears: [], tail: null, wings: [], leaves: [], arms: ar, extra: tip, face: addFace(g, R, [0, 0.58, 0], { ex: 0.36, ey: 0.1, size: 0.115, tongue: true, msize: 0.12, cheek: '#ff93b8' }), top: 1.9 };
   } },
-  { name: 'Sunny', color: '#ffe066', idles: { dance: 3, look: 3, stretch: 1, eat: 2, sleep: 1 }, build(g) { // yellow chick
+  { name: 'Sunny', sig: 'peep', color: '#ffe066', idles: { dance: 3, look: 3, stretch: 1, eat: 2, sleep: 1 }, build(g) { // yellow chick
     const c = '#ffe36e', R = [0.64, 0.62, 0.62];
     E(g, c, [0, 0.66, 0], R);
     E(g, '#fff6c2', [0, 0.5, 0.24], [0.42, 0.34, 0.34], { line: 0, mat: FLAT });
@@ -88,7 +88,7 @@ export const SPECIES = [
     const tail = pivot(g, [0, 0.6, -0.6]); part(tail, new THREE.ConeGeometry(0.12, 0.3, 8), toon('#ffd23f', FUR), { pos: [0, 0.1, -0.06], rot: [-1.0, 0, 0], line: 0.02 });
     return { ears: [], tail, wings, leaves: [], jaw, extra: tuft, face: f, top: 1.7 };
   } },
-  { name: 'Mochi', color: '#b997ff', idles: { sleep: 4, stretch: 2, look: 1, dance: 1, eat: 1 }, build(g) { // lavender cat
+  { name: 'Mochi', sig: 'lick', color: '#b997ff', idles: { sleep: 4, stretch: 2, look: 1, dance: 1, eat: 1 }, build(g) { // lavender cat
     const c = '#b997ff', R = [0.62, 0.56, 0.58];
     E(g, c, [0, 0.62, 0], R);
     E(g, '#efe3ff', [0, 0.26, 0.2], [0.33, 0.2, 0.25], { mat: FLAT, line: 0 }); // belly
@@ -109,7 +109,7 @@ export const SPECIES = [
     const ar = arms(g, c, { x: 0.58, y: 0.55, z: 0.14, paw: '#efe3ff' });
     return { ears, tail, wings: [], leaves: [], arms: ar, face, top: 1.7 };
   } },
-  { name: 'Leafy', color: '#8fdc6e', idles: { stretch: 4, look: 2, dance: 1, sleep: 1, eat: 2 }, build(g) { // green sprout
+  { name: 'Leafy', sig: 'sway', color: '#8fdc6e', idles: { stretch: 4, look: 2, dance: 1, sleep: 1, eat: 2 }, build(g) { // green sprout
     const c = '#8fdc6e', R = [0.62, 0.56, 0.6];
     E(g, c, [0, 0.6, 0], R);
     E(g, '#e8ffd6', [0, 0.28, 0.2], [0.34, 0.2, 0.25], { mat: FLAT, line: 0 });
@@ -128,7 +128,7 @@ export const SPECIES = [
     const ar = arms(g, c, { x: 0.56, y: 0.55, z: 0.1, paw: '#a8ec8a' });
     return { ears: [], tail, wings: [], leaves, arms: ar, extra: crown, face: addFace(g, R, [0, 0.6, 0], { ex: 0.38, ey: 0.1, size: 0.1, msize: 0.09, cheek: '#ff9eae' }), top: 1.9 };
   } },
-  { name: 'Bobo', color: '#ffb561', idles: { eat: 4, sleep: 2, look: 1, stretch: 2, dance: 1 }, build(g) { // orange bear
+  { name: 'Bobo', sig: 'sniff', color: '#ffb561', idles: { eat: 4, sleep: 2, look: 1, stretch: 2, dance: 1 }, build(g) { // orange bear
     const c = '#ffb04f', R = [0.68, 0.6, 0.62];
     E(g, c, [0, 0.64, 0], R);
     E(g, '#ffe4b8', [0, 0.3, 0.24], [0.4, 0.24, 0.28], { mat: FLAT, line: 0 });
@@ -146,7 +146,7 @@ export const SPECIES = [
     const ar = arms(g, c, { x: 0.64, y: 0.6, z: 0.1, w: 0.12, paw: '#ffe4b8' });
     return { ears, tail, wings: [], leaves: [], arms: ar, face, top: 1.8 };
   } },
-  { name: 'Pengu', color: '#4fb8c6', idles: { dance: 2, look: 3, sleep: 1, stretch: 1, eat: 3 }, build(g) { // penguin
+  { name: 'Pengu', sig: 'waddle', color: '#4fb8c6', idles: { dance: 2, look: 3, sleep: 1, stretch: 1, eat: 3 }, build(g) { // penguin
     const c = '#3da5b8', R = [0.56, 0.74, 0.54];
     E(g, c, [0, 0.8, 0], R);
     E(g, '#f6feff', [0, 0.64, 0.2], [0.4, 0.5, 0.38], { line: 0, mat: { rim: 0.2, fuzz: 0.2, rimTint: true } });
@@ -166,7 +166,7 @@ export const SPECIES = [
     E(g, '#2f93a6', [0, 1.5, 0.0], [0.05, 0.08, 0.04], { line: 0.02 });
     return { ears: [], tail, wings, leaves: [], jaw, face, top: 1.9 };
   } },
-  { name: 'Fluff', color: '#fff0f6', idles: { sleep: 4, eat: 3, look: 2, stretch: 1, dance: 1 }, build(g) { // cloud sheep
+  { name: 'Fluff', sig: 'bounce', color: '#fff0f6', idles: { sleep: 4, eat: 3, look: 2, stretch: 1, dance: 1 }, build(g) { // cloud sheep
     const wool = '#fff4fa', skin = '#ffd9c4';
     const cl = [[0, 0.66, 0, 0.5], [-0.35, 0.62, 0.0, 0.38], [0.35, 0.62, 0.0, 0.38], [0, 0.62, -0.38, 0.4], [-0.25, 0.98, -0.1, 0.32], [0.25, 0.98, -0.1, 0.32], [0, 1.02, 0.08, 0.3], [-0.28, 0.4, 0.2, 0.3], [0.28, 0.4, 0.2, 0.3]];
     cl.forEach(([x, y, z, r]) => E(g, wool, [x, y, z], [r, r, r], { line: 0.026, mat: { rim: 0.3, fuzz: 0.45, rimTint: true } }));

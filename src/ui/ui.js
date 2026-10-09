@@ -4,11 +4,11 @@ import { state, save, saveSoon, addPetals, resetSave } from '../game/state.js';
 import { SPECIES, WARDROBE, SLOTS, COLOR_ICON, BOND_AT, featuredSpecies } from '../game/data.js';
 import { isTouchDevice } from '../game/touch.js';
 import { EMOTES, playEmote } from '../game/emotes.js';
-import { LEVEL_NAME, LEVEL_AT, DECOR, DECOR_BY_ID, eventFor, MAX_LEVEL, levelOf, CHARM_MS } from '../game/content.js';
-import { startPlacing, moveDecor, storeIndex, rotatePlacing, cancelPlacing, confirmPlacing, storeMoving, buyDecor, charm, nextCharm } from '../game/decor.js';
+import { LEVEL_NAME, LEVEL_AT, DECOR, DECOR_CATS, DECOR_BY_ID, eventFor, MAX_LEVEL, CHARM_MS } from '../game/content.js';
+import { startPlacing, moveDecor, storeIndex, sizePlacing, tintPlacing, linePlacing, rotatePlacing, cancelPlacing, confirmPlacing, storeMoving, buyDecor, charm, nextCharm } from '../game/decor.js';
 import { makePreview } from '../game/cosmetics.js';
 import { applySettings } from '../game/audio.js';
-import { ptsOf, nextAt, wishOf, activeWishText } from '../game/friends.js';
+import { ptsOf, nextAt, wishOf, activeWishText, lvlOf, nextNeeds, mem } from '../game/friends.js';
 import { on, emit } from '../game/events.js';
 import { def, claim, allDone, newSet } from '../game/quests.js';
 import { sfx, initAudio as _ia } from '../game/audio.js';
@@ -30,6 +30,8 @@ export function setPrompt(text, sub, action = true, chips = null) {
     cb.querySelectorAll('.chip').forEach(b => b.onclick = e => { e.stopPropagation(); emit('ui:giftkey', { key: b.dataset.k }); });
   }
 }
+const T_ = () => isTouchDevice();
+const giveWord = () => (T_() ? 'tap the Give button' : 'press E');
 const controlsText = () => isTouchDevice()
   ? [['🕹️', 'Left stick', 'Move'], ['⤒', 'JUMP button', 'Jump'], ['💨', 'RUN (hold)', 'Run'], ['👆', 'Drag the view', 'Look around'], ['🎁', 'Give button', 'Gift near a creature'], ['😊', 'Emote button', 'Wave, dance...']]
   : [['⌨️', 'WASD / arrows', 'Move'], ['␣', 'Space', 'Jump'], ['⇧', 'Shift', 'Run'], ['🖱️', 'Drag mouse', 'Look around'], ['E', 'E (or F / Enter)', 'Give a gift, place or move decor'], ['R', 'R key', 'Rotate decor while placing'], ['1-4', 'Number keys', 'Emotes'], ['J Q H', 'J / Q / H', 'Journal, quests, help']];
@@ -59,7 +61,7 @@ export function initUI({ initAudio }) {
         </div>
       </div>
       <div id="emotewheel" class="hidden">${EMOTES.map((e, i) => `<button class="round" data-e="${e.id}" aria-label="${e.label}" title="${e.label}">${e.icon}<small>${i + 1}</small></button>`).join('')}</div>
-      <div id="placebar" class="hidden"><div class="ph"></div><div class="pb"><button class="btn mint" id="pl-ok">✔ Place</button><button class="btn sun sm" id="pl-rot">⟲ Rotate</button><button class="btn sm" id="pl-store">📦 Store</button><button class="btn sm grey" id="pl-x">✕</button></div></div>
+      <div id="placebar" class="hidden"><div class="ph"></div><div class="pb"><button class="btn mint sm" id="pl-ok">✔ Place</button><button class="btn sun sm" id="pl-rot">⟲ Turn</button><button class="btn sm" id="pl-size">📏 Size</button><button class="btn sm" id="pl-tint">🎨 Colour</button><button class="btn sm" id="pl-line">↔ Line</button><button class="btn sm" id="pl-store">📦 Store</button><button class="btn sm grey" id="pl-x">✕</button></div></div>
       <div id="prompt" class="hidden"><button class="btn mint"></button><div class="chips"></div><small class="psub"></small></div>
       <div id="help"></div>
     </div>
@@ -86,7 +88,7 @@ export function initUI({ initAudio }) {
     $('#title').classList.add('leave'); $('#hud').classList.remove('hidden'); document.body.classList.add('playing');
     setTimeout(() => $('#title').remove(), 800);
     emit('play');
-    setTimeout(() => emit('toast', { icon: '👋', text: `Welcome to day ${state.day}!`, kind: 'good' }), 700);
+    if (state.lastWelcome !== state.day) { state.lastWelcome = state.day; saveSoon(); setTimeout(() => emit('toast', { icon: '👋', text: state.day === 1 ? 'Welcome to Pokopia!' : `A new day: day ${state.day}!`, kind: 'good' }), 700); }
     setTimeout(() => { $('#help').style.opacity = 0; }, 14000);
   };
   $('#prompt button').onclick = () => emit('ui:interact');
@@ -96,16 +98,17 @@ export function initUI({ initAudio }) {
   const muteIcon = () => { $('#b-mute').textContent = state.settings.mute ? '🔇' : '🔊'; };
   $('#b-mute').onclick = () => { state.settings.mute = !state.settings.mute; applySettings(); saveSoon(); muteIcon(); };
   muteIcon();
-  $('#pl-ok').onclick = () => confirmPlacing(); $('#pl-rot').onclick = () => rotatePlacing(); $('#pl-x').onclick = () => cancelPlacing(); $('#pl-store').onclick = () => storeMoving();
+  $('#pl-ok').onclick = () => confirmPlacing(); $('#pl-rot').onclick = () => rotatePlacing(); $('#pl-x').onclick = () => cancelPlacing(); $('#pl-store').onclick = () => storeMoving(); $('#pl-size').onclick = () => sizePlacing(); $('#pl-tint').onclick = () => tintPlacing(); $('#pl-line').onclick = () => linePlacing();
   on('placing', e => {
-    $('#placebar').classList.toggle('hidden', !e.on); if (!e.on) return;
-    $('#pl-store').classList.toggle('hidden', !e.moving);
-    $('#placebar .ph').textContent = (isTouchDevice() ? 'Walk to aim the ghost' : 'Walk to aim · R rotate · E place · Esc cancel') + (e.moving ? ' · moving' : '');
+    $('#placebar').classList.toggle('hidden', !e.on); document.body.classList.toggle('placing', !!e.on); if (!e.on) return;
+    $('#pl-store').classList.toggle('hidden', !e.moving); document.body.classList.add('placing');
+    $('#placebar .ph').textContent = (T_() ? 'Use the stick to aim the ghost' : 'Walk to aim · R rotate · E place · Esc cancel') + (e.moving ? ' · moving' : '');
+    $('#pl-size').classList.toggle('hidden', !!e.kit); $('#pl-line').classList.toggle('hidden', !e.line_ok); $('#pl-line').classList.toggle('on', !!e.line);
     $('#emotewheel').classList.add('hidden');
   });
   // soft click sound on every button/tab/card press
   root.addEventListener('pointerdown', e => { if (e.target.closest('.btn,.tab,.card,.round')) sfx.click(); }, true);
-  const applyTextSize = () => { const t = state.settings.textSize || 1; document.documentElement.style.setProperty('--ts', t); document.documentElement.style.setProperty('--tsh', Math.min(t, 1.15)); };
+  const applyTextSize = () => { const t = state.settings.textSize || 1; document.documentElement.style.setProperty('--ts', t); document.documentElement.style.setProperty('--tsh', Math.min(t, 1.15)); document.body.classList.toggle('ts-big', t > 1.1); };
   applyTextSize(); on('settings', applyTextSize);
 
   const panels = { quests: renderQuests, journal: renderJournal, shop: renderShop, settings: renderSettings, help: renderHelp, decor: renderDecor };
@@ -139,11 +142,14 @@ export function initUI({ initAudio }) {
     return `<div class="qcard ${q.done ? 'done' : ''} ${q.claimed ? 'claimed' : ''}"><div class="qi">${d.icon}</div><div class="mid"><h3>${d.title}</h3><p>${d.desc} · ${q.progress}/${d.goal}</p><div class="bar"><i style="width:${pct}%"></i></div></div>${btn}</div>`;
   }
   function nextUp() {
-    const out = [], open_ = state.quests.filter(q => !q.claimed).map(q => ({ q, d: def(q.id) })).filter(x => x.d).sort((a, b) => b.q.progress / b.d.goal - a.q.progress / a.d.goal)[0];
-    if (open_) out.push(`${open_.d.icon} ${open_.d.desc} (${open_.q.progress}/${open_.d.goal})`);
+    const out = [], open_ = state.quests.map((q, i) => ({ q, i, d: def(q.id) })).filter(x => x.d && !x.q.claimed);
+    const claimable = open_.find(x => x.q.done);
+    if (claimable) out.push(`${claimable.d.icon} ${claimable.d.title}: done! Claim! 🎁`);
+    const working = open_.filter(x => !x.q.done).sort((a, b) => b.q.progress / b.d.goal - a.q.progress / a.d.goal)[0];
+    if (working) out.push(`${working.d.icon} ${working.d.desc} (${working.q.progress}/${working.d.goal})`);
     const nc = nextCharm(); out.push(nc ? `🏡 Island Charm ${charm()}/${nc.at}: ${nc.text}` : '🏡 Every charm reward earned!');
-    const w = activeWishText(); out.push(w ? `🌟 ${w.sp}: ${w.text}` : '🌟 Befriend a creature to hear its wishes');
-    return out;
+    const w = activeWishText(); if (out.length < 3) out.push(w ? `🌟 ${w.sp}: ${w.text}` : '🌟 Befriend a creature to hear its wishes');
+    return out.slice(0, 3);
   }
   function renderQuests() {
     const goals = nextUp();
@@ -168,10 +174,11 @@ export function initUI({ initAudio }) {
   function renderJournal() {
     const total = SPECIES.length, seen = SPECIES.filter(s => state.discovered[s.id]).length, friends = SPECIES.filter(s => state.befriended[s.id]).length;
     const cards = [...SPECIES].sort((a, b) => (!!state.discovered[b.id] - !!state.discovered[a.id]) || (!!state.befriended[b.id] - !!state.befriended[a.id])).map(s => {
-      const known = !!state.discovered[s.id], fr = !!state.befriended[s.id], pts = ptsOf(s.id), lvl = levelOf(pts);
-      const next = nextAt(s.id), prev = LEVEL_AT[lvl], pct = lvl >= MAX_LEVEL ? 100 : Math.round((pts - prev) / (next - prev) * 100);
+      const known = !!state.discovered[s.id], fr = !!state.befriended[s.id], pts = ptsOf(s.id), lvl = lvlOf(s.id), nd = nextNeeds(s.id), log = mem(s.id).log.slice(-3).reverse();
+      const pct = !nd ? 100 : Math.round(Math.min(1, (pts - LEVEL_AT[lvl]) / (nd.pts[1] - LEVEL_AT[lvl])) * 100);
+      const needs = nd ? `Next: ${nd.pts[0] >= nd.pts[1] ? '✔' : '❤'} ${Math.floor(nd.pts[0])}/${nd.pts[1]} · ${nd.days[0] >= nd.days[1] ? '✔' : '📅'} ${nd.days[0]}/${nd.days[1]} days · ${nd.kinds[0] >= nd.kinds[1] ? '✔' : '🎲'} ${nd.kinds[0]}/${nd.kinds[1]} kinds` : 'Best friends forever!';
       const w = fr && wishOf(s.id);
-      return `<div class="card sp ${known ? '' : 'locked'}" style="--c:${s.color}">${fr ? '<span class="tag">Friend</span>' : ''}${w ? '<span class="wdot" title="Has a wish">🌟</span>' : ''}<div class="face">${known ? s.icon : '?'}</div><span class="nm">${known ? s.id : '???'}</span><span class="meta">${known ? s.blurb : 'Keep exploring to find me!'}</span>${known ? `<span class="meta fav">Loves ${COLOR_ICON[s.fav.berry]} ${s.fav.berry} berries · ${COLOR_ICON[s.fav.gem]} ${s.fav.gem} gems</span><span class="meta lvl"><b>${LEVEL_NAME[lvl]}</b> · Lv ${lvl}/${MAX_LEVEL}</span><span class="lbar"><i style="width:${pct}%"></i></span>${w ? `<span class="meta wish">🌟 ${w.text}${w.type === 'gift' ? ` (${w.p}/${w.n})` : ''}</span>` : ''}` : ''}</div>`;
+      return `<div class="card sp ${known ? '' : 'locked'}" style="--c:${s.color}">${fr ? '<span class="tag">Friend</span>' : ''}${w ? '<span class="wdot" title="Has a wish">🌟</span>' : ''}<div class="face">${known ? s.icon : '?'}</div><span class="nm">${known ? s.id : '???'}</span><span class="meta">${known ? s.blurb : 'Keep exploring to find me!'}</span>${known ? `<span class="meta fav">Loves ${COLOR_ICON[s.fav.berry]} ${s.fav.berry} berries · ${COLOR_ICON[s.fav.gem]} ${s.fav.gem} gems</span><span class="meta lvl"><b>${LEVEL_NAME[lvl]}</b> · Lv ${lvl}/${MAX_LEVEL}</span><span class="lbar"><i style="width:${pct}%"></i></span>${fr ? `<span class="meta need">${needs}</span>` : ''}${log.length ? `<span class="meta things"><b>Things we did</b>${log.map(x => `<span>• ${x.t}</span>`).join('')}</span>` : ''}${w ? `<span class="meta wish">🌟 ${w.text}${w.type === 'gift' ? ` (${w.p}/${w.n})` : ''}</span>` : ''}` : ''}</div>`;
     }).join('');
     const reward = state.milestones.m_journal ? '<p class="sub">🏆 Journal complete! Golden Halo unlocked.</p>' : `<p class="sub">Discover all ${total} to unlock a special 😇 Golden Halo!</p>`;
     return panel('Creature Journal', ['#6ee0b0', '#32b886'], `<p class="sub">Discovered ${seen}/${total} · Friends ${friends}/${total}</p>${reward}<div class="grid">${cards}</div>`);
@@ -214,19 +221,29 @@ export function initUI({ initAudio }) {
   }
 
   // ---- island / decor ----
-  let dtab = 'shop';
+  let dtab = 'shop', dcat = 'Furniture';
   function renderDecor() {
-    const c = charm(), nx = nextCharm(), have = Object.entries(state.decorInv).filter(([, n]) => n > 0);
-    const list = (dtab === 'shop' ? DECOR.filter(d => !d.gift) : DECOR.filter(d => (state.decorInv[d.id] || 0) > 0 || d.gift)).map(d => {
+    const c = charm(), nx = nextCharm(), have = Object.values(state.decorInv).reduce((a, n) => a + n, 0);
+    const mk = d => {
       const n = state.decorInv[d.id] || 0, placed = state.decor.filter(x => x.id === d.id).length;
       const act = dtab === 'shop'
         ? `<button class="btn sun sm" data-buy="${d.id}">Buy 🌸 ${d.price}</button>${n ? `<button class="btn mint sm" data-place="${d.id}">Place (${n})</button>` : ''}`
-        : (n ? `<button class="btn mint sm" data-place="${d.id}">Place (${n})</button>` : `<span class="meta">🔒 ${d.gift}</span>`);
-      return `<div class="card dc"><span class="big">${d.icon}</span><span class="nm">${d.name}</span><span class="meta">+${d.charm} charm${placed ? ` · ${placed} placed` : ''}</span><div class="acts">${act}</div></div>`;
-    }).join('');
-    const placedList = state.decor.length ? `<h3 class="h3">Placed on your island (${state.decor.length})</h3><div class="placed">${state.decor.map((x, i) => `<div class="prow"><span>${DECOR_BY_ID[x.id].icon} ${DECOR_BY_ID[x.id].name}</span><button class="btn mint sm" data-mv="${i}">Move</button><button class="btn sm" data-st="${i}">Store</button></div>`).join('')}</div>` : '';
+        : (n ? `<button class="btn mint sm" data-place="${d.id}">Place (${n})</button>` : `<span class="meta">🔒 ${d.gift || 'Buy in the shop'}</span>`);
+      return `<div class="card dc"><span class="big">${d.icon}</span><span class="nm">${d.name}</span><span class="meta">+${d.charm} charm${placed ? ` · ${placed} placed` : ''}${d.line ? ' · line' : ''}</span><div class="acts">${act}</div></div>`;
+    };
+    let body = '';
+    if (dtab === 'shop') body = `<div class="tabs sub2">${DECOR_CATS.map(x => `<button class="tab ${dcat === x.id ? 'on' : ''}" data-dc="${x.id}">${x.icon} ${x.id}</button>`).join('')}</div><div class="grid">${DECOR.filter(d => !d.gift && d.cat === dcat).map(mk).join('')}</div>${dcat === 'Build kit' ? '<p class="sub">Build kit: floors snap to a 2x2 grid. Put walls and doorways on the floor edges, then a roof on top.</p>' : ''}`;
+    else if (dtab === 'mine') {
+      const placedList = state.decor.length ? `<h3 class="h3">Placed on your island (${state.decor.length})</h3><div class="placed">${state.decor.map((x, i) => `<div class="prow"><span>${DECOR_BY_ID[x.id].icon} ${DECOR_BY_ID[x.id].name}</span><button class="btn mint sm" data-mv="${i}">Move</button><button class="btn sm" data-st="${i}">Store</button></div>`).join('')}</div>` : '';
+      body = `<div class="grid">${DECOR.filter(d => (state.decorInv[d.id] || 0) > 0).map(mk).join('') || '<p class="sub">Nothing in your bag. Buy decorations in the shop.</p>'}</div>${placedList}`;
+    } else {
+      const by = {}; for (const x of state.decor) { const d = DECOR_BY_ID[x.id]; by[d.cat] = (by[d.cat] || 0) + 1; }
+      const names = {}; for (const x of state.decor) names[x.id] = (names[x.id] || 0) + 1;
+      body = `<div class="gallery"><div class="gscore"><b>${c}</b><span>Island Charm</span></div><div class="gcats">${DECOR_CATS.map(k => `<div class="gc"><span>${k.icon}</span><b>${by[k.id] || 0}</b><small>${k.id}</small></div>`).join('')}</div></div><h3 class="h3">Your island collection</h3><div class="gitems">${Object.entries(names).map(([id, n]) => `<span class="gi">${DECOR_BY_ID[id].icon} ${DECOR_BY_ID[id].name} ×${n}</span>`).join('') || '<p class="sub">Place something to start your gallery!</p>'}</div><p class="sub">Unlocked ${Object.keys(state.placedTypes || {}).length}/${DECOR.length} kinds · ${Object.values(state.charmMs).length}/${CHARM_MS.length} charm rewards</p>`;
+    }
     const pct = nx ? Math.min(100, Math.round(c / nx.at * 100)) : 100;
-    const p = panel('My Island', ['#7fe0c8', '#2fb6a0'], `<p class="sub">🌸 <span class="petal-count">${state.petals}</span> petals · ${state.decor.length} decorations placed</p><div class="charm"><b>🏡 Island Charm ${c}</b><span class="lbar big"><i style="width:${pct}%"></i></span><small>${nx ? `Next reward at ${nx.at}: ${nx.text} (+${nx.petals} 🌸)` : 'You earned every charm reward!'}</small></div><p class="sub">Buy a decoration, tap Place, walk to aim, then Place again. To move one later, stand right next to it and press E, or use My items.</p><div class="tabs"><button class="tab ${dtab === 'shop' ? 'on' : ''}" data-dt="shop">🛍️ Shop</button><button class="tab ${dtab === 'mine' ? 'on' : ''}" data-dt="mine">📦 My items (${have.reduce((a, [, n]) => a + n, 0)})</button></div><div class="grid">${list}</div>${dtab === 'mine' ? placedList : ''}`);
+    const p = panel('My Island', ['#7fe0c8', '#2fb6a0'], `<p class="sub">🌸 <span class="petal-count">${state.petals}</span> petals · ${state.decor.length} placed</p><div class="charm"><b>🏡 Island Charm ${c}</b><span class="lbar big"><i style="width:${pct}%"></i></span><small>${nx ? `Next reward at ${nx.at}: ${nx.text} (+${nx.petals} 🌸)` : 'You earned every charm reward!'}</small></div><div class="tabs"><button class="tab ${dtab === 'shop' ? 'on' : ''}" data-dt="shop">🛍️ Shop</button><button class="tab ${dtab === 'mine' ? 'on' : ''}" data-dt="mine">📦 My items (${have})</button><button class="tab ${dtab === 'gallery' ? 'on' : ''}" data-dt="gallery">🖼️ Gallery</button></div>${body}<p class="sub">Tip: ${T_() ? 'tap Place, use the stick to aim, then Place again.' : 'press Place, walk to aim, then press E.'} To move one later, stand right next to it and ${giveWord()}, or use My items.</p>`);
+    p.querySelectorAll('[data-dc]').forEach(b => b.onclick = () => { dcat = b.dataset.dc; rerender('decor'); });
     p.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => { const i = +b.dataset.mv; close(); moveDecor(i); });
     p.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { storeIndex(+b.dataset.st); sfx.click(); });
     p.querySelectorAll('[data-dt]').forEach(b => b.onclick = () => { dtab = b.dataset.dt; rerender('decor'); });
@@ -237,7 +254,7 @@ export function initUI({ initAudio }) {
 
   // ---- help ----
   function renderHelp() {
-    return panel('How to Play', ['#ffb36b', '#ff8a3c'], `<ol class="howto"><li>💎 <b>Collect gems</b> by walking into them. Each one gives you a petal 🌸.</li><li>🍓 <b>Berries and gems</b> also go in your gift bag 🎒.</li><li>🐾 <b>Make friends:</b> give gifts (E), dance, and visit every day. Favourite colours grow friendship fastest. Friends make wishes you can grant!</li><li>🏡 <b>Decorate your island:</b> buy lanterns, benches, even a windmill, then place them.</li><li>👒 <b>Spend petals</b> in the wardrobe on hats, hair, trails and more.</li><li>⭐ <b>Quests</b> give bonus petals. No timers, no rush.</li></ol><h3 class="h3">Controls</h3>${controlsHtml()}`);
+    return panel('How to Play', ['#ffb36b', '#ff8a3c'], `<ol class="howto"><li>💎 <b>Collect gems</b> by walking into them. Each one gives you a petal 🌸.</li><li>🍓 <b>Berries and gems</b> also go in your gift bag 🎒.</li><li>🐾 <b>Make friends:</b> ${giveWord()} near a creature to give a gift. Gifts, dances and daily visits build friendship slowly. Deeper friendship needs different days and different kinds of fun. Friends make wishes and invite you to hang out!</li><li>👁️ <b>Sparkle Sense</b> (the eye emote) reveals hidden gems on hilltops and shores.</li><li>🏡 <b>Decorate your island:</b> furniture, gardens, lights, paths, and a build kit for a little house of your own.</li><li>👒 <b>Spend petals</b> in the wardrobe on hats, hair, trails and more.</li><li>⭐ <b>Quests</b> give bonus petals. No timers, no rush.</li></ol><h3 class="h3">Controls</h3>${controlsHtml()}`);
   }
 
   // ---- settings ----

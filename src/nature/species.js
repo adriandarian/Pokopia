@@ -9,7 +9,7 @@ export function roundTree(leaf = ['#5fbf45', '#7bd556', '#4aa83c'], seed = 1) {
   L.push(cyl(0.2, 0.42, 1.5, 7, BARK));
   L.push(cyl(0.12, 0.2, 1.2, 6, BARK2, { y: 1.3, tiltZ: 0.18 }));
   L.push(cyl(0.09, 0.14, 0.9, 6, BARK2, { y: 1.1, x: 0.05, tiltZ: -0.7 }));
-  const cs = [[0, 3.3, 0, 1.55], [0.95, 2.9, 0.3, 1.1], [-0.9, 2.95, -0.2, 1.15], [0.1, 4.1, 0.1, 1.05], [0.1, 2.9, -1.0, 1.1], [-0.6, 3.8, 0.7, 0.85]];
+  const cs = [[0, 3.3, 0, 1.55], [0.95, 2.9, 0.3, 1.1], [-0.9, 2.95, -0.2, 1.15], [0.1, 4.1, 0.1, 1.05], [-0.6, 3.8, 0.7, 0.85]];
   cs.forEach((c, i) => L.push(blob(c[0], c[1], c[2], c[3], leaf[i % leaf.length], { seed: i + seed, sy: 0.82, detail: 1, lump: 0.17 })));
   return merge(L);
 }
@@ -140,17 +140,17 @@ export function flower(petal, center = '#ffd23f', tulip = false) {
   L.push(prep(lf, '#5cb04a', 0.2, [1, 1], 0));
   if (tulip) {
     for (let i = 0; i < 4; i++) {
-      const a = i / 4 * Math.PI * 2, g = octa(0.045, 0.1, 0.03);
-      g.translate(0.045, 0.1, 0); g.rotateZ(-0.12); g.rotateY(a); g.translate(0, 0.34, 0);
+      const a = i / 4 * Math.PI * 2, g = octa(0.065, 0.14, 0.05);
+      g.translate(0.06, 0.13, 0); g.rotateZ(-0.12); g.rotateY(a); g.translate(0, 0.34, 0);
       L.push(prep(g, petal, 1, [0.85, 1.15], 0.03));
     }
   } else {
     for (let i = 0; i < 6; i++) {
-      const a = i / 6 * Math.PI * 2, g = octa(0.075, 0.016, 0.03);
-      g.translate(0.085, 0, 0); g.rotateZ(0.4); g.rotateY(a); g.translate(0, 0.36, 0);
+      const a = i / 6 * Math.PI * 2, g = octa(0.11, 0.028, 0.05);
+      g.translate(0.11, 0, 0); g.rotateZ(0.45); g.rotateY(a); g.translate(0, 0.36, 0);
       L.push(prep(g, petal, 1, [0.9, 1.1], 0.03));
     }
-    const cg = octa(0.04, 0.035, 0.04); cg.translate(0, 0.375, 0);
+    const cg = octa(0.06, 0.05, 0.06); cg.translate(0, 0.375, 0);
     L.push(prep(cg, center, 1, [1, 1], 0));
   }
   return merge(L);

@@ -12,10 +12,10 @@ const C = (h) => new THREE.Color(h);
 const KEYS = [
   { e: -0.45, zen: C('#0a1238'), hor: C('#1d3470'), sun: C('#9ab4ff'), fog: C('#1d3470'), amb: 1.6, hemiSky: C('#7894ee'), hemiGnd: C('#34466e'), exp: 1.7, tint: C('#cfdcff'), fill: 0.7 },
   { e: -0.15, zen: C('#2a3a8a'), hor: C('#d98a86'), sun: C('#ff8a60'), fog: C('#8a6a9c'), amb: 1.5, hemiSky: C('#b498e0'), hemiGnd: C('#5c4c6c'), exp: 1.45, tint: C('#ffd2e4'), fill: 0.55 },
-  { e: -0.02, zen: C('#3a54b0'), hor: C('#ff8446'), sun: C('#ff8a4a'), fog: C('#e8906c'), amb: 1.45, hemiSky: C('#ffb08c'), hemiGnd: C('#906a5c'), exp: 1.3, tint: C('#ffd0b0'), fill: 0.4 },
-  { e: 0.12,  zen: C('#3f78d8'), hor: C('#ffc080'), sun: C('#ffb870'), fog: C('#f6c090'), amb: 1.3, hemiSky: C('#ffd8b0'), hemiGnd: C('#86905a'), exp: 1.12, tint: C('#ffe6c8'), fill: 0.3 },
-  { e: 0.35,  zen: C('#3584ea'), hor: C('#a8d2fa'), sun: C('#ffe9c0'), fog: C('#b4d8f8'), amb: 1.1, hemiSky: C('#bfe0ff'), hemiGnd: C('#7a9a5a'), exp: 1.0, tint: C('#fff6ea'), fill: 0.25 },
-  { e: 1.0,   zen: C('#1e78ec'), hor: C('#94c8f8'), sun: C('#fff0d4'), fog: C('#a6d2f8'), amb: 1.05, hemiSky: C('#bcdcff'), hemiGnd: C('#7a9a5a'), exp: 1.0, tint: C('#fff8f0'), fill: 0.25 },
+  { e: -0.02, zen: C('#3a54b0'), hor: C('#ff8446'), sun: C('#ff9a60'), fog: C('#e8906c'), amb: 1.45, hemiSky: C('#ffc0a4'), hemiGnd: C('#8a6a66'), exp: 1.3, tint: C('#ffe2d0'), fill: 0.4 },
+  { e: 0.12,  zen: C('#3f78d8'), hor: C('#ffc080'), sun: C('#ffc490'), fog: C('#f6c090'), amb: 1.3, hemiSky: C('#ffdcc0'), hemiGnd: C('#7c8660'), exp: 1.12, tint: C('#fff0e0'), fill: 0.3 },
+  { e: 0.35,  zen: C('#3584ea'), hor: C('#a8d2fa'), sun: C('#ffe9c0'), fog: C('#b4d8f8'), amb: 1.1, hemiSky: C('#bfe0ff'), hemiGnd: C('#6a8a54'), exp: 1.0, tint: C('#fff6ea'), fill: 0.25 },
+  { e: 1.0,   zen: C('#1e78ec'), hor: C('#94c8f8'), sun: C('#fff0d4'), fog: C('#a6d2f8'), amb: 1.05, hemiSky: C('#bcdcff'), hemiGnd: C('#6a8a54'), exp: 1.0, tint: C('#fff8f0'), fill: 0.25 },
 ];
 const SUNI = [0, 0.6, 2.2, 2.8, 3.0, 3.0]; // sun light intensity per key
 // Sunrise 5.2h, sunset 19.2h; longer, slower night arc so dusk/golden hour sits around 18-19.5h.
@@ -67,7 +67,27 @@ function floorTexture() {
   return t;
 }
 
+// Global 'leaf dapple': modulates the sun's direct light with soft world-space noise in every lit material
+// (trees, grass, ground, props) via a ShaderChunk patch - no per-material work or extra uniforms needed.
+let dapplePatched = false;
+function patchDapple() {
+  if (dapplePatched) return; dapplePatched = true;
+  const SC = THREE.ShaderChunk;
+  SC.lights_pars_begin += `
+  float dpH(vec3 p){p=fract(p*.3183+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+  float dpN(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
+    return mix(mix(mix(dpH(i),dpH(i+vec3(1,0,0)),f.x),mix(dpH(i+vec3(0,1,0)),dpH(i+vec3(1,1,0)),f.x),f.y),
+               mix(mix(dpH(i+vec3(0,0,1)),dpH(i+vec3(1,0,1)),f.x),mix(dpH(i+vec3(0,1,1)),dpH(i+vec3(1,1,1)),f.x),f.y),f.z);}
+  float sunDapple(vec3 wp){float n=dpN(wp*vec3(.55,.35,.55))*.6+dpN(wp*1.7)*.4;return mix(.8,1.,smoothstep(.3,.65,n));}`;
+  SC.lights_fragment_begin = SC.lights_fragment_begin.replace('getDirectionalLightInfo( directionalLight, directLight );',
+    `getDirectionalLightInfo( directionalLight, directLight );
+		#if UNROLLED_LOOP_INDEX == 0
+		directLight.color *= sunDapple( transpose( mat3( viewMatrix ) ) * ( -vViewPosition ) + cameraPosition );
+		#endif`);
+}
+
 export function buildSky(scene) {
+  patchDapple();
   scene.background = new THREE.Color('#9fd8ff');
   scene.fog = new THREE.Fog('#a6d2f8', 160, 720);
   const hemi = new THREE.HemisphereLight('#cfeaff', '#7a9a5a', 1.1);
@@ -77,7 +97,7 @@ export function buildSky(scene) {
   sun.shadow.mapSize.set(4096, 4096);
   const sc = sun.shadow.camera; const SH = 38; sc.left = -SH; sc.right = SH; sc.top = SH; sc.bottom = -SH; sc.near = 1; sc.far = 320;
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.05; sun.shadow.radius = 4; sun.shadow.blurSamples = 12;
-  sun.shadow.intensity = 0.8; // soft, coloured shadows: the rest of the shadow darkness comes from hemi + fill
+  sun.shadow.intensity = 0.9; // soft, coloured shadows: the rest of the shadow darkness comes from hemi + fill
   sun.shadow.autoUpdate = false; sun.shadow.needsUpdate = true; // re-render the shadow map every 2nd frame (halves ~560 shadow draw calls)
   scene.add(sun); scene.add(sun.target);
   // shadow frustum follows the player, snapped to shadow-texel increments in light space (no shimmer)
@@ -101,7 +121,7 @@ export function buildSky(scene) {
     hour: 9.5, auto: true,
     zen: new THREE.Color(), hor: new THREE.Color(), sun: new THREE.Color(), fog: new THREE.Color(),
     hemiSky: new THREE.Color(), hemiGnd: new THREE.Color(), tint: new THREE.Color(),
-    amb: 1, exp: 1, sunI: 1, e: 0.5, dir: new THREE.Vector3(), bloom: 0.28, night: 0, dusk: 0,
+    amb: 1, exp: 1, sunI: 1, dapple: 'global (ShaderChunk patch)', e: 0.5, dir: new THREE.Vector3(), bloom: 0.28, night: 0, dusk: 0,
   };
   scene.userData.sky = state;
 
@@ -305,7 +325,7 @@ export function buildSky(scene) {
   const SM = THREE.MathUtils.smoothstep;
   function apply() {
     const a = sunAngle(state.hour);
-    state.dir.set(Math.cos(a) * 0.9, Math.sin(a) * 0.92, 0.42).normalize();
+    state.dir.set(Math.cos(a) * 0.9, Math.sin(a) * 0.8, 0.42).normalize(); // noon elevation ~62 deg so shadows stay readable
     const e = state.e = state.dir.y;
     const k = sampleKeys(e, tmp);
     state.zen.copy(k.zen); state.hor.copy(k.hor); state.sun.copy(k.sun);

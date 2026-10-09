@@ -12,7 +12,7 @@ function tuftGeometry() {
   for (let b = 0; b < blades; b++) {
     const a = (b / blades) * Math.PI * 2 + b * 0.9, r = 0.03 + (b % 2) * 0.07;
     const ox = Math.cos(a) * r, oz = Math.sin(a) * r;
-    const h = 0.26 + ((b * 37) % 5) * 0.06, w = 0.05;
+    const h = 0.28 + ((b * 37) % 3) * 0.04, w = 0.068;
     const dir = a + 0.8 + b * 0.5, dx = Math.cos(dir), dz = Math.sin(dir);
     const px = -dz, pz = dx; // blade width axis
     const lean = 0.22 * h;
@@ -34,7 +34,7 @@ function tuftGeometry() {
 }
 
 export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] }) {
-  const CELL = 16, MAXD = 38;
+  const CELL = 16, MAXD = 28;
   const uFade = { value: new THREE.Vector4(0, 0, 0, 1) }, uPlayer = { value: new THREE.Vector3(1e5, 0, 1e5) }, uCre = { value: Array.from({ length: 16 }, () => new THREE.Vector3(1e5, 0, 1e5)) };
   const mat = new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide, emissive: '#1d4010', emissiveIntensity: 0.55 });
   mat.onBeforeCompile = (sh) => {
@@ -63,18 +63,18 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] })
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n varying float vT; varying float vF;')
       .replace('#include <color_fragment>', `#include <color_fragment>
-        vec3 bladeC = mix(vec3(.16,.37,.1), vec3(.36,.66,.16), smoothstep(0.,.45,vT));
-        bladeC = mix(bladeC, vec3(.78,.93,.38), smoothstep(.55,1.,vT)*.7);
+        vec3 bladeC = mix(vec3(.22,.45,.14), vec3(.4,.68,.2), smoothstep(0.,.45,vT));
+        bladeC = mix(bladeC, vec3(.55,.78,.3), smoothstep(.55,1.,vT)*.45);
         diffuseColor.rgb *= bladeC * bladeC * 1.0 * (1.15) ;
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.12,.3,.07), (1.-vF)*.5);
-        diffuseColor.rgb *= mix(.8, 1., smoothstep(0.,.3,vT));`);;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.2,.42,.1), (1.-vF)*.5);
+        diffuseColor.rgb *= mix(.86, 1., smoothstep(0.,.3,vT));`);;
   };
   mat.customProgramCacheKey = () => 'grassV2';
 
   const geo = tuftGeometry();
   const cells = new Map();
   const d = new THREE.Object3D(), col = new THREE.Color();
-  const TARGET = 42000;
+  const TARGET = 30000;
   let n = 0, tries = 0;
   while (n < TARGET && tries++ < TARGET * 8) {
     const x = (rnd() - 0.5) * WORLD * 0.94, z = (rnd() - 0.5) * WORLD * 0.94, h = heightAt(x, z);
@@ -96,7 +96,7 @@ export function buildGrass(scene, { pathMask, pondD, slopeAt, rnd, avoid = [] })
     d.scale.set(s * 1.1, s * (0.75 + rnd() * 0.6), s * 1.1); d.updateMatrix();
     // per-clump hue variation: yellow-green meadow patches vs deep blue-green shade
     const hue = 0.24 + (fbm(x * 0.05, z * 0.05, 2, 4) - 0.5) * 0.14 + (rnd() - 0.5) * 0.03 - g * 0.02 + m * 0.01;
-    col.setHSL(hue, 0.55 + rnd() * 0.25, 0.62 + rnd() * 0.3);
+    col.setHSL(hue, 0.5 + rnd() * 0.15, 0.7 + rnd() * 0.14);
     c.push([d.matrix.clone(), col.clone(), x, z]);
     n++;
   }
