@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#c9efff"/><stop offset="1" stop-color="#70cde2"/></linearGradient>
+    <linearGradient id="grass" x2="0" y2="1"><stop stop-color="#c6f19c"/><stop offset="1" stop-color="#65c78a"/></linearGradient>
+    <linearGradient id="petal" x2=".6" y2="1"><stop stop-color="#ffe1ee"/><stop offset="1" stop-color="#ff8fbc"/></linearGradient>
+    <linearGradient id="roof" x2="0" y2="1"><stop stop-color="#ffafbc"/><stop offset="1" stop-color="#ea6f91"/></linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+  <circle cx="768" cy="214" r="83" fill="#fff1b2"/>
+  <path d="M0 800Q256 720 512 800T1024 800V1024H0Z" fill="#49b8d0" opacity=".4"/>
+  <g fill="none" stroke="#e5fbff" stroke-width="12" stroke-linecap="round" opacity=".7"><path d="M131 777h84m538 36h103M81 854h61m540 36h123"/></g>
+  <ellipse cx="513" cy="767" rx="329" ry="71" fill="#238ea9" opacity=".2"/>
+  <path d="M194 666Q512 559 830 666L803 722Q512 872 221 722Z" fill="#d6b381"/>
+  <ellipse cx="512" cy="661" rx="319" ry="106" fill="#fff0cc"/>
+  <ellipse cx="512" cy="639" rx="294" ry="95" fill="url(#grass)"/>
+  <path d="M573 640Q615 681 575 712" fill="none" stroke="#fff0cc" stroke-width="43"/>
+  <ellipse cx="392" cy="627" rx="135" ry="32" fill="#429f79" opacity=".22"/>
+  <path d="M364 616V393" fill="none" stroke="#976d63" stroke-width="40" stroke-linecap="round"/>
+  <path d="M363 508l-57-64m61 27l57-58" fill="none" stroke="#976d63" stroke-width="24" stroke-linecap="round"/>
+  <g fill="url(#petal)"><circle cx="295" cy="384" r="81"/><circle cx="436" cy="382" r="84"/><circle cx="364" cy="310" r="101"/><circle cx="363" cy="408" r="102"/></g>
+  <path d="M294 310q37-48 89-40" fill="none" stroke="#fff0f6" stroke-width="18" stroke-linecap="round"/>
+  <g stroke-linejoin="round">
+    <path d="M476 508h213v144H476Z" fill="#fff1d9" stroke="#bd9281" stroke-width="9"/>
+    <path d="M450 513l132-116 134 116Z" fill="url(#roof)" stroke="#ce6381" stroke-width="12"/>
+    <path d="M478 497l104-91 102 91" fill="none" stroke="#ffe1e8" stroke-width="9" stroke-linecap="round"/>
+    <path d="M561 651v-55a25 25 0 0 1 50 0v55" fill="#b38571"/>
+    <rect x="494" y="547" width="40" height="42" rx="8" fill="#87d5e7" stroke="#fff" stroke-width="9"/>
+    <rect x="635" y="547" width="37" height="42" rx="8" fill="#87d5e7" stroke="#fff" stroke-width="9"/>
+  </g>
+  <circle cx="598" cy="618" r="5" fill="#ffe4a0"/>
+  <g fill="#fff6bc"><path d="M750 353l10 27 28 10-28 10-10 27-10-27-28-10 28-10Z"/><path d="M220 467l7 19 20 7-20 7-7 19-7-19-20-7 20-7Z"/></g>
+  <g fill="#fff3f8"><circle cx="290" cy="646" r="12"/><circle cx="311" cy="660" r="12"/><circle cx="289" cy="672" r="12"/><circle cx="270" cy="660" r="12"/></g>
+  <circle cx="290" cy="659" r="9" fill="#ffd36d"/>
+  <g fill="#ffb7d2"><ellipse cx="733" cy="571" rx="10" ry="18" transform="rotate(28 733 571)"/><ellipse cx="215" cy="340" rx="9" ry="16" transform="rotate(-30 215 340)"/></g>
+</svg>
